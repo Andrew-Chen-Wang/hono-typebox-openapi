@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "target": "ESNext",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@api/internal/*": ["./src/*"],
+      "@template-nextjs/db/*": ["../../packages/db/src/*"],
+      "@lib/dao/*": ["../../lib/typescript/dao/src/*"]
+    },
+    "rootDir": "./src",
+    "outDir": "./build",
+    "composite": true,
+    "declaration": true
+  },
+  "include": ["**/*.ts", "**/*.json"],
+  "exclude": ["node_modules"],
+  "references": [{ "path": "../../lib/typescript/dao" }]
+}

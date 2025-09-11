@@ -1,0 +1,20 @@
+---
+description: Criteria when creating a TypeBox schema for creating API schemas (request, response, query, etc.)
+globs: apps/internal-api/src/**/*.serializer.ts
+alwaysApply: false
+---
+- When creating a schema, the name of them should be camel case. The format should be apiRouteSchemaQuery where apiRoute is the url path (including the base URL but excluding the version such as v1), "Schema" is static, and "Query" defines what the schema is designated for. Your options are only: SchemaQuery, SchemaParam, SchemaResponse, SchemaRequest. "QuerySchema" is completely invalid
+- Any `id` type (like `user_id` or some kind of primary/foreign key) should use PositiveIntegerString from `utils/common.serializer.ts`
+- Any type that includes is a type or null should use Nullable from `utils/common.serializer.ts`
+- Refrain from adding examples to the schema
+- Limit/offset are number types with a minimum of 0 for each and multipleOf 1
+- When creating schemas, you can use `Refine` in `utils/common.serializer.ts` for custom validation logic unless the Typebox type already offers an option for checking (e.g. `Type.Number({ minimum: 1, multipleOf: 1})`). Here's an example:
+```typescript
+const T = Refine(Type.String(), value => value.length <= 255, {
+  message: "String can't be more than 255 characters"
+})
+```
+- You do not need to add validation logic for Response schema types.
+- Any date-like type in a schema should return `Type.String({ format: "date-time" })` (or `"date"`). In fact, the only types that you should support should be JSON allowable types such as arrays, objects, strings, numbers, etc. and not JavaScript specific types like `Type.Date` for a Date object.
+- When adding errors, ensure you update the `ErrorCode` enum in `apps/internal-api/src/utils/errors.enum.ts`. Some errors like 404 can simply use `ResourceNotFound` with a custom error message rather than define a new error code. Custom error codes are primarily for incorrect form inputs.
+- `hono-api/typebox` should never be imported in a serializer file

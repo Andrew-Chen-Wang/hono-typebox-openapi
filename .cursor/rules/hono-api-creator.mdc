@@ -1,0 +1,74 @@
+---
+description: Rules when creating/editing an API
+globs: apps/internal-api/src/**
+alwaysApply: false
+---
+- Users are already authenticated when you grab the user via `const user = c.var.user`. Do not check whether the user is falsey. All endpoints are authenticated checked
+- All imports should be relative imports
+- Use `throwError` or other helper functions from `utils/http-exception.ts` for returning a non-2xx status response
+- Don't add comments; when migrating code, don't shift or re-write any code, simply copy and paste.
+  - Do not remove comments if you're migrating code. If there is a function comment, then that should be an OpenAPI description
+- All non-2xx status response content in describeRoute should use `ErrorResponseT` from `./utils/common.serializer.ts` as `application/json`
+- 2xx status code responses should either use `{}` or be null. If you're sending back an array, then always use `data` as a key and set the value to the array
+- You don't need to add a description for responses. Adding a description to APIs themselves are fine but not always necessary
+- Any util import from website can typically be found inside apps/internal-api/src/utils which should be imported relatively like `./utils/pagination.ts`
+- New route additions should always chain from the app variable. It should never do a separate line of `app.method`/`app.get()`. The correct way to do this is:
+```typescript
+const app = new Hono().use(authMiddleware)
+app.get()
+```
+is totally incorrect. The syntax should be:
+
+```typescript
+const app = new Hono().use(authMiddleware)
+.get()
+.post()
+```
+- All valid queries should convert from `Type | undefined` to `Type | null` using null coalescing
+- Never `resolver(Type.Object({}))` directly. Always create the type in an accompanying `.serializer.ts` file and import the schema into the API file.
+
+Here is a good example of an API: all response schemas should be wrapped in `resolver(schema)` where resolver is imported from `hono-openapi/typebox`.
+
+```typescript
+import { describeRoute } from "hono-openapi"
+import { resolver, validator } from "hono-openapi/typebox"
+import { ErrorResponseT } from "../utils/common.serializer.ts"
+import { throwError } from "../utils/http-exception.ts"
+import { ErrorCode } from "../utils/errors.enum.ts"
+
+const app = new Hono().use(authMiddleware).get(
+  "/:id/route",
+  describeRoute({
+    description: "",
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: resolver(routeSchemaResponse),
+          },
+        },
+      },
+      400: {
+        content: {
+          "application/json": {
+            schema: resolver(ErrorResponseT)
+          }
+        }
+      }
+    },
+  }),
+  validator("query", SchemaQuery),
+  validator("json", SchemaRequest),
+  async (c) => {
+    const user = c.var.user // Already logged in successfully
+    const query = c.req.valid("query")  // Already valid query
+    const queryValue = query.value ?? null
+    const json = c.req.valid("json")  // Already valid json
+
+    ...
+
+    if (error) {
+      throwError(400, ErrorCode.BadRequest, "Error message")
+    }
+    ...
+```

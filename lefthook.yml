@@ -1,0 +1,14 @@
+# Refer for explanation to following link:
+# https://github.com/evilmartians/lefthook/blob/master/docs/configuration.md
+
+pre-commit:
+  parallel: false
+  commands:
+    eslint:
+      glob: "*.{js,ts,jsx,tsx}"
+      run: npx eslint --config .config/eslint.config.mjs --fix {staged_files}
+      stage_fixed: true
+    biome:
+      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}"
+      run: npx @biomejs/biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true

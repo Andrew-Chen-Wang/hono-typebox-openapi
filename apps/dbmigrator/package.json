@@ -1,0 +1,24 @@
+{
+  "name": "dbmigrator",
+  "version": "1.0.0",
+  "description": "",
+  "bin": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "migrate:up": "kysely migrate:up --cwd src",
+    "migrate:down": "kysely migrate:down --cwd src",
+    "migrate:latest": "kysely migrate:latest --cwd src",
+    "seed:run": "kysely seed:run --cwd src"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "dependencies": {
+    "@template-nextjs/db": "*"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^9.4.0",
+    "kysely-ctl": "^0.9.0"
+  }
+}

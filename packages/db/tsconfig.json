@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "target": "ESNext",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@template-nextjs/db/*": ["./src/*"]
+    },
+    "rootDir": "./src",
+    "outDir": "./build"
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
+}

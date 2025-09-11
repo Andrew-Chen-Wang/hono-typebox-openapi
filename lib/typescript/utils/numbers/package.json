@@ -1,0 +1,21 @@
+{
+  "name": "@utils/numbers",
+  "version": "1.0.0",
+  "description": "Common utils using native NodeJS code or small, mostly static packages, used across all packages",
+  "type": "module",
+  "main": "index.js",
+  "config": {},
+  "scripts": {},
+  "exports": [
+    {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts"
+    }
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "dependencies": {},
+  "devDependencies": {}
+}

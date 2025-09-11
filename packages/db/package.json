@@ -1,0 +1,33 @@
+{
+  "name": "@template-nextjs/db",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "config": {
+    "codegenoverrides": {}
+  },
+  "scripts": {
+    "db-codegen": "kysely-codegen --config-file ./.config/.kysely-codegenrc.ts"
+  },
+  "exports": [
+    {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts"
+    }
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "kysely": "^0.27.5",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/pg": "^8.11.10",
+    "kysely-codegen": "^0.18.0"
+  }
+}

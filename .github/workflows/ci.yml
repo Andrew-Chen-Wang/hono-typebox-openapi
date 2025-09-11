@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  lint-biome:
+    name: (Biome) Lint and Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v5
+      - name: Setup Biome
+        uses: biomejs/setup-biome@v2
+      - name: Check formatting with Biome
+        # Do not use --changed. Previously, if we didn't lint everything,
+        # some bugs would slip through due to sheer nature of git diff.
+        run: biome ci --no-errors-on-unmatched .
+
+  lint:
+    name: (eslint) TypeScript Lint Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.7.0'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check typescript-eslint
+        run: npx eslint --config .config/eslint.config.mjs .
+
+  build:
+    name: Website Build and Test Full Repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.7.0'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        working-directory: apps/website
+        run: npm run build
+
+      - name: Test
+        run: npm run test
