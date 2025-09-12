@@ -10,8 +10,8 @@ export const uniqueSymbol = Symbol("openapi")
 /**
  * Generate OpenAPI docs for a validator middleware. Not meant to be used directly, unless you're creating a custom middleware.
  */
-export async function generateValidatorDocs<Target extends keyof ValidationTargets>(
-  target: Target,
+export async function generateValidatorDocs(
+  target: keyof ValidationTargets,
   _result: ReturnType<ResolverResult["builder"]>,
 ) {
   const result = await _result
@@ -19,7 +19,7 @@ export async function generateValidatorDocs<Target extends keyof ValidationTarge
 
   if (target === "form" || target === "json") {
     const media = target === "json" ? "application/json" : "multipart/form-data"
-    if (!docs.requestBody || !("content" in docs.requestBody) || !docs.requestBody.content) {
+    if (!docs.requestBody || !("content" in docs.requestBody)) {
       docs.requestBody = {
         content: {
           [media]: {

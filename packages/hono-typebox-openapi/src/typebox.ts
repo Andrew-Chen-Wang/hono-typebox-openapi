@@ -11,7 +11,7 @@ import { type Hook, tbValidator } from "./validator"
  * @param schema TypeBox schema
  * @returns Resolver result
  */
-export function resolver<T extends TSchema>(schema: T): ResolverResult {
+export function resolver(schema: TSchema): ResolverResult {
   return {
     builder: async () => ({
       schema: await convert(schema),
