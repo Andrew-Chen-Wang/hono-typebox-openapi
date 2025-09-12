@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox"
+import { Type } from "typebox"
 /**
  * TypeBox schemas for standardized error responses
  * Following the OData v4 JSON spec format as specified in the Hono error code rule

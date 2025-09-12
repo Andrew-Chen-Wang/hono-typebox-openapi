@@ -1,5 +1,2 @@
-[env]
-NEXT_TELEMETRY_DISABLED = "1"
-
 [tools]
 node = "24.7.0"

@@ -12,18 +12,11 @@
   "author": "",
   "license": "ISC",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "lib/typescript/*",
-    "lib/typescript/utils/*",
-    "lib/typescript/ui/*"
-  ],
+  "workspaces": ["apps/*", "packages/*"],
   "devDependencies": {
+    "@types/node": "^24.3.1",
     "@biomejs/biome": "1.9.4",
     "@eslint/js": "^9.18.0",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
     "eslint": "^9.18.0",
     "jiti": "^2.4.2",
     "lefthook": "^1.10.3",
@@ -32,10 +25,5 @@
     "typescript-eslint": "^8.19.1",
     "vitest": "^3.0.7"
   },
-  "dependencies": {
-    "@hono/standard-validator": "^0.1.5"
-  },
-  "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.40.0"
-  }
+  "dependencies": {}
 }

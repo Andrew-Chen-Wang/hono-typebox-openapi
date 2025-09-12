@@ -1,20 +1,25 @@
-import { crudUser } from "@lib/dao/user/crud"
-import { db } from "@template-nextjs/db"
 import { Hono } from "hono"
-import { describeRoute } from "hono-openapi"
-import { authMiddleware } from "../middleware.ts"
+import { describeRoute } from "hono-typebox-openapi"
+import { resolver, validator } from "hono-typebox-openapi/typebox"
+import { Type } from "typebox"
 import { ErrorSchemaResponse } from "../utils/common.serializer.ts"
 import { throwInternalServerError } from "../utils/http-exception.ts"
+import { UserPostSchemaRequest, UserPostSchemaResponse } from "./user.serialier.ts"
 
-const app = new Hono().use(authMiddleware).delete(
-  "/me/delete",
+const app = new Hono().post(
+  "/:id",
   describeRoute({
     responses: {
-      204: {
-        description: "User successfully deleted",
+      200: {
+        description: "Example Response",
+        content: {
+          "application/json": {
+            schema: resolver(UserPostSchemaResponse),
+          },
+        },
       },
       500: {
-        description: "",
+        description: "Internal Server Error",
         content: {
           "application/json": {
             schema: ErrorSchemaResponse,
@@ -23,15 +28,17 @@ const app = new Hono().use(authMiddleware).delete(
       },
     },
   }),
-  async (c) => {
-    const user = c.var.user
-
-    const result = await crudUser(db).deleteUser(user.id)
-    if (!result) {
-      return throwInternalServerError(c, "Failed to delete user")
+  validator("param", Type.Object({ id: Type.Number() })),
+  validator("json", UserPostSchemaRequest),
+  (c) => {
+    const { id } = c.req.valid("param")
+    if (Number.isNaN(id)) {
+      return throwInternalServerError(c, "Example error")
     }
+    const body = c.req.valid("json")
+    console.log(body)
 
-    return c.body(null, 204)
+    return c.json({ id: crypto.randomUUID(), failureCount: id % 2 === 0 ? 0 : null })
   },
 )
 

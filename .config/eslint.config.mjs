@@ -12,13 +12,7 @@ export default tseslint.config(
     },
   },
   {
-    ignores: [
-      "**/.next/**",
-      "private_notes/**",
-      "**/.config/**",
-      "apps/website/postcss.config.js",
-      "apps/website/next.config.ts",
-    ],
+    ignores: ["private_notes/**", "**/.config/**"],
   },
   {
     rules: {

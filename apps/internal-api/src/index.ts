@@ -1,10 +1,11 @@
+import { serve } from "@hono/node-server"
 import { apiReference } from "@scalar/hono-api-reference"
 import { Hono } from "hono"
-import { type GenerateSpecOptions, generateSpecs, openAPIRouteHandler } from "hono-openapi"
+import { type OpenApiSpecsOptions, generateSpecs, openAPISpecs } from "hono-typebox-openapi"
 import { ErrorObjectT, ErrorResponseT, InnerErrorT } from "./utils/errors/error.serializer.ts"
 import v1 from "./v1"
 
-const spec: Partial<GenerateSpecOptions> = {
+const spec: Partial<OpenApiSpecsOptions> = {
   documentation: {
     info: {
       title: "Internal API",
@@ -23,16 +24,14 @@ const spec: Partial<GenerateSpecOptions> = {
 }
 
 const app = new Hono().basePath("/api")
-if (process.env.NODE_ENV === "development") {
-  app.get("/openapi", openAPIRouteHandler(app, spec))
-  app.get(
-    "/docs",
-    apiReference({
-      theme: "saturn",
-      spec: { url: "/api/openapi" },
-    }),
-  )
-}
+app.get("/openapi", openAPISpecs(app, spec))
+app.get(
+  "/docs",
+  apiReference({
+    theme: "saturn",
+    spec: { url: "/api/openapi" },
+  }),
+)
 
 const routes = app.route("", v1)
 
@@ -44,3 +43,8 @@ if (process.argv.includes("--openapi")) {
     console.log(JSON.stringify(specs, null, 2))
   })
 }
+
+serve({
+  fetch: app.fetch,
+  port: 3000,
+})
