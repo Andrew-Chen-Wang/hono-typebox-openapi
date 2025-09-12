@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server"
 import { apiReference } from "@scalar/hono-api-reference"
 import { Hono } from "hono"
 import { type OpenApiSpecsOptions, generateSpecs, openAPISpecs } from "hono-typebox-openapi"
-import { ErrorObjectT, ErrorResponseT, InnerErrorT } from "./utils/errors/error.serializer.ts"
+import { ErrorObjectT, ErrorResponseT, InnerErrorT } from "./utils/errors/error.serializer"
 import v1 from "./v1"
 
 const spec: Partial<OpenApiSpecsOptions> = {
@@ -42,9 +42,9 @@ if (process.argv.includes("--openapi")) {
   const specs = generateSpecs(app, spec).then((specs) => {
     console.log(JSON.stringify(specs, null, 2))
   })
+} else {
+  serve({
+    fetch: app.fetch,
+    port: 3000,
+  })
 }
-
-serve({
-  fetch: app.fetch,
-  port: 3000,
-})

@@ -52,9 +52,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        working-directory: apps/website
-        run: npm run build
-
       - name: Test
         run: npm run test

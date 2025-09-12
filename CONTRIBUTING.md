@@ -29,6 +29,10 @@ To improve our development process, we’ve set up tooling and systems, and Hono
 
 **`cd apps/internal-api && npm run dev`**: runs the internal API server for testing.
 
+#### Internal
+
+**`cd packages/hono-typebox-openapi && npm publish`**: Publishes the package to npm.
+
 ## Think you found a bug?
 
 Please follow the issue template and provide a clear path to reproduction with a code example. The best way to show a bug is by sending a CodeSandbox link.

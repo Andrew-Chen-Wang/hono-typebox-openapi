@@ -13,11 +13,10 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": false,
     "paths": {
       "@api/internal/*": ["./src/*"],
-      "@template-nextjs/db/*": ["../../packages/db/src/*"],
-      "@lib/dao/*": ["../../lib/typescript/dao/src/*"]
+      "hono-typebox-openapi/*": ["../../packages/hono-typebox-openapi/src/*"]
     },
     "rootDir": "./src",
     "outDir": "./build",
@@ -26,5 +25,5 @@
   },
   "include": ["**/*.ts", "**/*.json"],
   "exclude": ["node_modules"],
-  "references": [{ "path": "../../lib/typescript/dao" }]
+  "references": [{ "path": "../../packages/hono-typebox-openapi" }]
 }

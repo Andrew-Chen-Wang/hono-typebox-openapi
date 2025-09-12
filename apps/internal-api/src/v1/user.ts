@@ -2,9 +2,9 @@ import { Hono } from "hono"
 import { describeRoute } from "hono-typebox-openapi"
 import { resolver, validator } from "hono-typebox-openapi/typebox"
 import { Type } from "typebox"
-import { ErrorSchemaResponse } from "../utils/common.serializer.ts"
-import { throwInternalServerError } from "../utils/http-exception.ts"
-import { UserPostSchemaRequest, UserPostSchemaResponse } from "./user.serialier.ts"
+import { ErrorSchemaResponse } from "../utils/common.serializer"
+import { throwInternalServerError } from "../utils/http-exception"
+import { UserPostSchemaRequest, UserPostSchemaResponse } from "./user.serialier"
 
 const app = new Hono().post(
   "/:id",
