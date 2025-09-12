@@ -19,7 +19,7 @@
   },
   "author": "Andrew-Chen-Wang",
   "license": "MIT",
-  "private": true,
+  "private": false,
   "dependencies": {
     "json-schema-walker": "^2.0.0"
   },
