@@ -71,7 +71,7 @@ function getProperty<T>(
   defaultValue: T,
 ): T {
   // @ts-expect-error
-  return obj && key in obj ? (obj[key] ?? defaultValue) : defaultValue
+  return obj && key in obj ? ((obj[key] as T) ?? defaultValue) : defaultValue
 }
 
 function mergeRouteData(...data: OpenAPIRoute["data"][]) {
@@ -143,7 +143,7 @@ export function registerSchemaPath({
     const dataFromContext = getPathContext(path)
 
     schema[path] = {
-      ...(schema[path] ? schema[path] : {}),
+      ...(schema[path] ?? {}),
       [method]: {
         responses: {},
         operationId: generateOperationId(method, path),
@@ -189,19 +189,21 @@ export function filterPaths(
       (excludeStaticFile ? !key.includes(".") || key.includes("{") : true)
     ) {
       // @ts-expect-error
-      for (const method of Object.keys(value)) {
+      for (const method of Object.keys(value as OpenAPIV3.PathItemObject)) {
         // @ts-expect-error
-        const schema = value[method]
+        const schema = (value as OpenAPIV3.PathItemObject)[
+          method as keyof OpenAPIV3.PathItemObject
+        ] as OpenAPIV3.OperationObject
 
         if (key.includes("{")) {
-          if (!schema.parameters) schema.parameters = []
+          schema.parameters ??= []
 
           const pathParameters = key
             .split("/")
             .filter(
               (x) =>
                 x.startsWith("{") &&
-                !schema.parameters.find(
+                !(schema.parameters as OpenAPIV3.ParameterObject[]).find(
                   (params: Record<string, unknown>) =>
                     params.in === "path" && params.name === x.slice(1, x.length - 1),
                 ),
@@ -210,13 +212,13 @@ export function filterPaths(
           for (const param of pathParameters) {
             const paramName = param.slice(1, param.length - 1)
 
-            const index = schema.parameters.findIndex(
+            const index = (schema.parameters as OpenAPIV3.ParameterObject[]).findIndex(
               (x: OpenAPIV3.ParameterObject) => x.in === "param" && x.name === paramName,
             )
 
-            if (index !== -1) schema.parameters[index].in = "path"
+            if (index !== -1) (schema.parameters as OpenAPIV3.ParameterObject[])[index].in = "path"
             else
-              schema.parameters.push({
+              (schema.parameters as OpenAPIV3.ParameterObject[]).push({
                 schema: { type: "string" },
                 in: "path",
                 name: paramName,
@@ -225,10 +227,12 @@ export function filterPaths(
           }
         }
 
-        if (!schema.responses)
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (!schema.responses) {
           schema.responses = {
             200: {},
           }
+        }
       }
 
       newPaths[key] = value

@@ -72,9 +72,9 @@ class InvalidTypeError extends Error {
 
 const oasExtensionPrefix = "x-"
 
-const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
+const handleDefinition = async (
   def: JSONSchema7Definition | JSONSchema6Definition | JSONSchema4,
-  schema: T,
+  schema: JSONSchema4,
 ) => {
   if (typeof def !== "object") {
     return def
@@ -83,14 +83,13 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
   const type = def.type
   if (type) {
     // Walk just the definitions types
-    const walker = new Walker<T>()
+    const walker = new Walker<JSONSchema4>()
     await walker.loadSchema(
       {
-        definitions: schema.definitions || [],
+        definitions: schema.definitions ?? [],
         ...def,
         $schema: schema.$schema,
-        // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-      } as any,
+      } as JSONSchema4,
       {
         dereference: true,
         cloneSchema: true,
@@ -114,6 +113,7 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
     if (hasNull) {
       const actualTypes = typeArr.filter((l) => l !== "null")
       return {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         type: actualTypes.length === 1 ? actualTypes[0] : actualTypes,
         nullable: true,
         // this is incorrect but thats ok, we are in the inbetween phase here
@@ -124,11 +124,8 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
   return def
 }
 
-const convert = async <T extends object = JSONSchema4>(
-  schema: T,
-  options?: Options,
-): Promise<OpenAPIV3.Document> => {
-  const walker = new Walker<T>()
+const convert = async (schema: object, options?: Options): Promise<OpenAPIV3.Document> => {
+  const walker = new Walker<object>()
   const convertDefs = options?.convertUnreferencedDefinitions ?? true
   await walker.loadSchema(schema, options)
   await walker.walk(convertSchema, walker.vocabularies.DRAFT_07)
@@ -200,8 +197,8 @@ function validateType(type: unknown) {
   const types = Array.isArray(type) ? type : [type]
 
   for (const type of types) {
-    if (type && !validTypes.has(type))
-      throw new InvalidTypeError(`Type "${type}" is not a valid type`)
+    if (type && !validTypes.has(type as string))
+      throw new InvalidTypeError(`Type "${type as string}" is not a valid type`)
   }
 }
 
@@ -253,6 +250,7 @@ function convertDependencies(schema: SchemaType) {
 function convertNullable(schema: SchemaType) {
   for (const key of ["oneOf", "anyOf"] as const) {
     const schemas = schema[key] as JSONSchema4[]
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (!schemas) continue
 
     if (!Array.isArray(schemas)) {
@@ -323,7 +321,7 @@ function convertIllegalKeywordsAsExtensions(schema: SchemaType) {
   for (const keyword of keys) {
     if (!keyword.startsWith(oasExtensionPrefix) && !allowedKeywords.includes(keyword)) {
       const key = `${oasExtensionPrefix}${keyword}` as keyof SchemaType
-      schema[key] = schema[keyword]
+      schema[key] = schema[keyword] as unknown
       schema[keyword] = undefined
     }
   }
@@ -333,7 +331,7 @@ function convertIllegalKeywordsAsExtensions(schema: SchemaType) {
 
 function convertExamples(schema: SchemaType) {
   if (schema.examples && Array.isArray(schema.examples)) {
-    schema.example = schema.examples[0]
+    schema.example = schema.examples[0] as unknown
     schema.examples = undefined
   }
 
@@ -365,8 +363,8 @@ function rewriteIfThenElse(schema: SchemaType) {
   */
   if ("if" in schema && schema.if && schema.then) {
     schema.oneOf = [
-      { allOf: [schema.if, schema.then].filter(Boolean) },
-      { allOf: [{ not: schema.if }, schema.else].filter(Boolean) },
+      { allOf: [schema.if as SchemaType, schema.then].filter(Boolean) },
+      { allOf: [{ not: schema.if as SchemaType }, schema.else].filter(Boolean) },
     ]
     schema.if = undefined
     // biome-ignore lint/suspicious/noThenProperty: <explanation>

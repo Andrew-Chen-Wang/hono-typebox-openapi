@@ -47,6 +47,7 @@ export function openAPISpecs<
   let specs: OpenAPIV3.Document
 
   return async (c) => {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (specs) return c.json(specs)
 
     specs = await generateSpecs(hono, options, config, c)
@@ -84,7 +85,9 @@ export async function generateSpecs<
   for (const path in schema) {
     for (const method in schema[path]) {
       // @ts-expect-error
-      const valueOrFunc = schema[path][method]?.hide
+      const valueOrFunc = (schema[path] as OpenAPIV3.PathItemObject)[
+        method as keyof OpenAPIV3.PathItemObject
+      ]?.hide as boolean | ((c: Context) => boolean) | undefined
 
       if (valueOrFunc) {
         let isHidden = false
@@ -93,7 +96,7 @@ export async function generateSpecs<
           isHidden = valueOrFunc
         } else if (typeof valueOrFunc === "function") {
           if (c) {
-            isHidden = valueOrFunc(c)
+            isHidden = (valueOrFunc as (c: Context) => boolean)(c)
           } else {
             console.warn(`'c' is not defined, cannot evaluate hide function for ${method} ${path}`)
           }

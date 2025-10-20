@@ -21,6 +21,7 @@ export function describeRoute(specs: DescribeRouteOptions): MiddlewareHandler {
 
       if (status && contentType) {
         const response = specs.responses[status]
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (response && "content" in response && response.content) {
           const splitedContentType = contentType.split(";")[0]
           const content = response.content[splitedContentType]
@@ -95,10 +96,12 @@ export async function generateRouteSpecs(
     },
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (tmp.responses) {
     for (const key of Object.keys(tmp.responses)) {
       const response = tmp.responses[key]
 
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!response || !("content" in response)) continue
 
       for (const contentKey of Object.keys(response.content ?? {})) {
