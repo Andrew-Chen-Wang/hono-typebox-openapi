@@ -19,13 +19,13 @@
   "license": "MIT",
   "private": true,
   "dependencies": {
-    "@scalar/hono-api-reference": "^0.5.172",
-    "typebox": "^1.0.4",
-    "hono": "^4.7.0",
+    "@scalar/hono-api-reference": "^0.9.32",
+    "typebox": "^1.0.77",
+    "hono": "^4.11.4",
     "hono-typebox-openapi": "*",
-    "@hono/node-server": "^1.19.2"
+    "@hono/node-server": "^1.19.9"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.82.5"
+    "@hey-api/openapi-ts": "0.90.3"
   }
 }
