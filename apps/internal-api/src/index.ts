@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server"
-import { apiReference } from "@scalar/hono-api-reference"
+import { Scalar } from "@scalar/hono-api-reference"
 import { Hono } from "hono"
 import { type OpenApiSpecsOptions, generateSpecs, openAPISpecs } from "hono-typebox-openapi"
 import { ErrorObjectT, ErrorResponseT, InnerErrorT } from "./utils/errors/error.serializer"
@@ -27,9 +27,11 @@ const app = new Hono().basePath("/api")
 app.get("/openapi", openAPISpecs(app, spec))
 app.get(
   "/docs",
-  apiReference({
-    theme: "saturn",
-    spec: { url: "/api/openapi" },
+  Scalar((c) => {
+    return {
+      theme: "saturn",
+      url: "/api/openapi",
+    }
   }),
 )
 
