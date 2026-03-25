@@ -26,6 +26,6 @@
     "@hono/node-server": "^1.19.9"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.90.3"
+    "@hey-api/openapi-ts": "0.94.5"
   }
 }

@@ -22,7 +22,7 @@ const defaults: {
     excludeTags: [],
   },
   config: {
-    version: "3.1.0",
+    version: "3.0.3",
     components: {},
   },
 }
@@ -40,7 +40,7 @@ export function openAPISpecs<
   S extends Schema = BlankSchema,
 >(hono: Hono<E, S, P>, options?: OpenApiSpecsOptions): MiddlewareHandler<E, P, I> {
   const config: OpenAPIRouteHandlerConfig = {
-    version: "3.1.0",
+    version: "3.0.3",
     components: {},
   }
 
