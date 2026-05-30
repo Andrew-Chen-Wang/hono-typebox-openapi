@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "generate-specs": "tsx src/index.ts --openapi > openapi.json",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
   },
   "exports": [
     {

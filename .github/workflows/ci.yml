@@ -56,3 +56,49 @@ jobs:
         run: npm run build
       - name: Test
         run: npm run test
+
+  codegen-integration:
+    name: Client codegen (swift-openapi-generator + Ktor/Kotlin)
+    # Swift runs on Linux, so no macOS runner is needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.7.0'
+          cache: 'npm'
+      # JDK 17 (LTS): openapi-generator's kotlin template emits a Gradle 7.x wrapper that does
+      # not support very new JDKs. setup-java sets JAVA_HOME, which the ktor test uses for the
+      # Gradle build (see apps/codegen-integration/src/ktor.test.ts compatibleJavaHome()).
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.0'
+
+      - name: Install dependencies
+        run: npm ci
+      - name: Build library
+        working-directory: packages/hono-typebox-openapi
+        run: npm run build
+
+      - name: Start example API server
+        working-directory: apps/internal-api
+        run: |
+          PORT=34100 npm run start &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:34100/openapi >/dev/null && exit 0
+            sleep 1
+          done
+          echo "example server did not become ready" >&2
+          exit 1
+
+      - name: Run codegen integration tests
+        # Only the local example server (34100) is reachable in CI; the private BestFit source
+        # (:3001) is never present here, so those cases skip automatically.
+        run: npx vitest run --config .config/vitest.config.mts apps/codegen-integration
