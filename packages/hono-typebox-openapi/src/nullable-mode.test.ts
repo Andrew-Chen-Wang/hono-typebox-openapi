@@ -57,4 +57,21 @@ describe("nullableMode end-to-end via generateSpecs", () => {
     // legitimately appears inside type arrays like ["object","null"] — that is the fix.
     expect(JSON.stringify(s)).not.toContain('{"type":"null"}')
   })
+
+  // Regression: generateSpecs must not mutate the shared route definition, so generating
+  // multiple specs from the SAME app (e.g. a default /openapi and a typeArray /openapi-ios)
+  // in any order must each produce mode-correct output independently.
+  it("does not leak typeArray output into a later default-mode spec on the same app", async () => {
+    const app = makeApp()
+    // typeArray first (the order that previously contaminated the cached schema)
+    const ios = responseSchema(await generateSpecs(app, { nullableMode: "typeArray" }))
+    expect(ios.required).toEqual(["id"])
+    // default afterwards must still be the untouched anyOf form
+    const web = responseSchema(await generateSpecs(app))
+    expect(web.properties.jobDetails.anyOf).toContainEqual({ type: "null" })
+    expect(web.required).toContain("jobDetails")
+    // and typeArray again is still correct
+    const ios2 = responseSchema(await generateSpecs(app, { nullableMode: "typeArray" }))
+    expect(ios2.properties.jobDetails.type).toEqual(["object", "null"])
+  })
 })

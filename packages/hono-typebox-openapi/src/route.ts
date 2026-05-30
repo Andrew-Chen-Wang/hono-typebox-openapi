@@ -96,28 +96,48 @@ export async function generateRouteSpecs(
   }
 
   if (tmp.responses) {
+    // `docs` is captured in the describeRoute closure and reused across every
+    // generateSpecs call on the same app. The spreads above are shallow, so each
+    // response/content/schema below is still shared with `docs`. Resolving a
+    // `builder` schema must NOT mutate those shared objects in place — otherwise the
+    // first call (e.g. an iOS spec) replaces the ResolverResult with its converted
+    // output, and later calls (e.g. the default web spec) skip conversion and reuse
+    // it. Rebuild fresh response/content objects so each call converts from scratch.
+    const resolvedResponses: Record<string, unknown> = {}
+
     for (const key of Object.keys(tmp.responses)) {
       const response = tmp.responses[key]
 
-      if (!response || !("content" in response)) continue
+      if (!response || !("content" in response) || !response.content) {
+        resolvedResponses[key] = response
+        continue
+      }
 
-      for (const contentKey of Object.keys(response.content ?? {})) {
-        const raw = response.content?.[contentKey]
+      const resolvedContent: Record<string, unknown> = {}
+
+      for (const contentKey of Object.keys(response.content)) {
+        const raw = response.content[contentKey]
 
         if (!raw) continue
 
         if (raw.schema && "builder" in raw.schema) {
           const result = await raw.schema.builder(config)
-          raw.schema = result.schema
+          resolvedContent[contentKey] = { ...raw, schema: result.schema }
           if (result.components) {
             components = {
               ...components,
               ...result.components,
             }
           }
+        } else {
+          resolvedContent[contentKey] = raw
         }
       }
+
+      resolvedResponses[key] = { ...response, content: resolvedContent }
     }
+
+    tmp.responses = resolvedResponses as typeof tmp.responses
   }
 
   return { docs: tmp, components }
