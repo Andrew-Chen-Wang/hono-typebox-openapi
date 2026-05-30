@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest"
-import convert, { type NullableMode } from "./toOpenAPISchema"
+import convert from "./toOpenAPISchema"
 
-// These tests drive `convert` with raw JSON-Schema inputs that mirror the exact shapes the
-// matchpro backend emits (and that the retired normalize-openapi.py used to fix), rather
-// than TypeBox builders — the shapes (nested unions, 248-member const unions) are awkward
-// to express through TypeBox and the point is to lock the wire-level transform.
+// These tests drive `convert` with raw JSON-Schema inputs that mirror the exact shapes a
+// backend emits (and that a hand-written normalizer would otherwise fix), rather than
+// TypeBox builders — the shapes (nested unions, 248-member const unions) are awkward to
+// express through TypeBox and the point is to lock the wire-level transform.
+// `swiftGenerator` selects the `target: "swift-openapi-generator"` normalization.
 type SchemaRecord = Record<string, unknown>
-// biome-ignore lint/suspicious/noExplicitAny: raw JSON schema fixtures
-const run = async (schema: any, mode: NullableMode): Promise<SchemaRecord> =>
-  (await convert(structuredClone(schema), { nullableMode: mode })) as unknown as SchemaRecord
+const run = async (
+  // biome-ignore lint/suspicious/noExplicitAny: raw JSON schema fixtures
+  schema: any,
+  swiftGenerator: boolean,
+): Promise<SchemaRecord> =>
+  (await convert(
+    structuredClone(schema),
+    swiftGenerator ? { target: "swift-openapi-generator" } : undefined,
+  )) as unknown as SchemaRecord
 
 // A nullable field wrapping a nested union, e.g. profile.transgender:
 //   anyOf[ anyOf[ enum, {type:string,maxLength:0} ], null ]
@@ -38,15 +45,15 @@ const smallConstUnion = {
   ],
 }
 
-describe("typeArray normalization (matchpro spec shapes)", () => {
+describe('target: "swift-openapi-generator" normalization (real-world spec shapes)', () => {
   it("strips null and inlines the sole member of a nested-union nullable", async () => {
-    const out = await run(demographic, "typeArray")
+    const out = await run(demographic, true)
     expect(JSON.stringify(out)).not.toContain('"null"')
     expect(out.anyOf).toEqual([{ enum: ["Yes", "No"] }, { type: "string", maxLength: 0 }])
   })
 
   it("drops only the null member from a multi-member nullable union", async () => {
-    const out = await run(multiMemberNullable, "typeArray")
+    const out = await run(multiMemberNullable, true)
     expect(JSON.stringify(out)).not.toContain('{"type":"null"}')
     expect(out.anyOf).toEqual([
       { type: "array", items: { type: "string" } },
@@ -56,17 +63,17 @@ describe("typeArray normalization (matchpro spec shapes)", () => {
   })
 
   it("inlines an empty member, dropping the null", async () => {
-    const out = await run(emptyMemberNullable, "typeArray")
+    const out = await run(emptyMemberNullable, true)
     expect(out).toEqual({})
   })
 
   it("collapses a large const-string union to a plain string", async () => {
-    const out = await run(largeConstUnion, "typeArray")
+    const out = await run(largeConstUnion, true)
     expect(out).toEqual({ type: "string" })
   })
 
   it("preserves a small const-string union", async () => {
-    const out = await run(smallConstUnion, "typeArray")
+    const out = await run(smallConstUnion, true)
     expect(out.anyOf).toEqual([
       { type: "string", const: "a" },
       { type: "string", const: "b" },
@@ -80,7 +87,7 @@ describe("typeArray normalization (matchpro spec shapes)", () => {
         required: ["approved", "id"],
         properties: { approved: { type: "null" }, id: { type: "string" } },
       },
-      "typeArray",
+      true,
     )
     expect(out.required).toEqual(["id"])
     expect((out.properties as Record<string, unknown>).approved).toEqual({})
@@ -93,20 +100,20 @@ describe("typeArray normalization (matchpro spec shapes)", () => {
         required: ["x", "y"],
         properties: { x: demographic, y: { type: "string" } },
       },
-      "typeArray",
+      true,
     )
     expect(out.required).toEqual(["y"])
   })
 
   describe('default "anyOf" mode leaves all of these untouched', () => {
     it("keeps nested-union nullable as-is", async () => {
-      expect(await run(demographic, "anyOf")).toEqual(demographic)
+      expect(await run(demographic, false)).toEqual(demographic)
     })
     it("keeps multi-member nullable as-is", async () => {
-      expect(await run(multiMemberNullable, "anyOf")).toEqual(multiMemberNullable)
+      expect(await run(multiMemberNullable, false)).toEqual(multiMemberNullable)
     })
     it("keeps the large const union as-is", async () => {
-      const out = await run(largeConstUnion, "anyOf")
+      const out = await run(largeConstUnion, false)
       expect((out.anyOf as unknown[]).length).toBe(248)
       expect(out.type).toBeUndefined()
     })

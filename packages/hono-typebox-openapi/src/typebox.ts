@@ -14,7 +14,7 @@ import { type Hook, tbValidator } from "./validator"
 export function resolver<T extends TSchema>(schema: T): ResolverResult {
   return {
     builder: async (config?: OpenAPIRouteHandlerConfig) => ({
-      schema: await convert(schema, { nullableMode: config?.nullableMode ?? "anyOf" }),
+      schema: await convert(schema, { target: config?.target }),
     }),
     validator: (value) => {
       Value.Parse(schema, value)

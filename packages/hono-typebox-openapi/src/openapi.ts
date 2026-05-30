@@ -20,7 +20,6 @@ const defaults: {
     exclude: [],
     excludeMethods: ["OPTIONS"],
     excludeTags: [],
-    nullableMode: "anyOf",
   },
   config: {
     version: "3.1.0",
@@ -76,12 +75,12 @@ export async function generateSpecs<
   c?: Context<E, P, I>,
 ) {
   const _options = { ...defaults.options, ...options }
-  // Thread the resolved nullable mode onto the config so it reaches each route's
-  // resolver/builder (which calls `convert`) via `registerSchemas`.
+  // Thread the target onto the config so it reaches each route's resolver/builder
+  // (which calls `convert`) via `registerSchemas`.
   const _config = {
     ...defaults.config,
     ...config,
-    nullableMode: _options.nullableMode ?? "anyOf",
+    target: _options.target,
   }
 
   const documentation = _options.documentation ?? {}

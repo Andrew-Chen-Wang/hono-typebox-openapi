@@ -10,8 +10,15 @@ export type PromiseOr<T> = T | Promise<T>
 export type OpenAPIRouteHandlerConfig = {
   version: "3.1.0" | "3.1.1"
   components: OpenAPIV3_1.ComponentsObject["schemas"]
-  nullableMode?: "anyOf" | "typeArray"
+  target?: OpenApiTarget
 } & { [key: string]: unknown }
+
+/**
+ * The downstream OpenAPI consumer to tailor the generated document for. When set, the
+ * document is normalized to work around that tool's limitations. Leave unset for the
+ * default, spec-idiomatic OpenAPI 3.1 output (best for most tools, e.g. hey-api).
+ */
+export type OpenApiTarget = "swift-openapi-generator"
 
 export type ResolverResult = {
   builder: (options?: OpenAPIRouteHandlerConfig) => PromiseOr<{
@@ -127,18 +134,20 @@ export type OpenApiSpecsOptions = {
   excludeTags?: string[]
 
   /**
-   * How to express nullable objects/arrays/refs in the generated OpenAPI 3.1 schema.
+   * Tailor the generated OpenAPI 3.1 document for a specific downstream consumer.
    *
-   * - `"anyOf"` (default): emit `anyOf: [<schema>, { type: "null" }]`. Idiomatic 3.1,
-   *   handled correctly by most tooling (e.g. hey-api).
-   * - `"typeArray"`: fold nullable objects/arrays (and scalars) into `type: [..., "null"]`,
-   *   emit a bare `$ref` for nullable references, and drop nullable properties from `required`.
-   *   Required for Apple's swift-openapi-generator, which cannot consume a standalone
-   *   `{ type: "null" }` member inside `anyOf`/`oneOf` and otherwise silently DROPS the property.
+   * Unset (default): idiomatic 3.1 output — nullables as `anyOf: [<schema>, { type: "null" }]`
+   * — handled correctly by most tooling (e.g. hey-api). Leave it unset for web clients.
    *
-   * @default "anyOf"
+   * `"swift-openapi-generator"`: normalize the document for Apple's swift-openapi-generator,
+   * which cannot consume a standalone `{ type: "null" }` member inside `anyOf`/`oneOf` (it
+   * silently DROPS the property) and explodes large `const` string unions into hundreds of
+   * single-case enums. In this mode nullables fold into `type: [..., "null"]` (or a bare
+   * `$ref`), standalone null becomes an open optional, nullable props are dropped from
+   * `required`, and large `const` unions collapse to `{ type: "string" }`. Note: nullable
+   * properties become optional (`T?`) in generated clients under this target.
    */
-  nullableMode?: "anyOf" | "typeArray"
+  target?: OpenApiTarget
 
   /**
    * Default options for `describeRoute` method

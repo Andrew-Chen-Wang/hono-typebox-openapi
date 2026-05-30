@@ -234,27 +234,34 @@ generateSpecs(app, options)
   })
 ```
 
-#### Nullable types & `swift-openapi-generator`
+#### Targeting a specific client generator
 
-A nullable schema — e.g. `Type.Union([T, Type.Null()])` — is emitted by default as
-`anyOf: [<schema>, { "type": "null" }]`. This is idiomatic OpenAPI 3.1 and is handled
-correctly by most tooling (e.g. [`@hey-api/openapi-ts`](https://heyapi.dev/)).
+By default the document is emitted as idiomatic OpenAPI 3.1 — e.g. a nullable
+`Type.Union([T, Type.Null()])` becomes `anyOf: [<schema>, { "type": "null" }]` — which is
+handled correctly by most tooling (e.g. [`@hey-api/openapi-ts`](https://heyapi.dev/)). Leave
+the default for web clients.
 
-Apple's [`swift-openapi-generator`](https://github.com/apple/swift-openapi-generator),
-however, [cannot consume a standalone `{ "type": "null" }` member](https://github.com/apple/swift-openapi-generator/issues/906)
-inside an `anyOf`/`oneOf` and **silently drops the entire property** from the generated
-client. If you target Swift, set `nullableMode: "typeArray"`:
+Some downstream generators can't consume idiomatic 3.1 and need the document normalized for
+them. Select one with the `target` option:
 
 ```ts
-openAPISpecs(app, { nullableMode: "typeArray" /* ... */ })
+openAPISpecs(app, { target: "swift-openapi-generator" /* ... */ })
 // or
-generateSpecs(app, { nullableMode: "typeArray" /* ... */ })
+generateSpecs(app, { target: "swift-openapi-generator" /* ... */ })
 ```
 
-In `"typeArray"` mode nullability is expressed the way `swift-openapi-generator`
-understands it:
+The same app can serve both — e.g. an idiomatic `/openapi` for the web client and a
+normalized `/openapi-ios` for Swift — by registering two routes with different `target`s.
 
-| Nullable shape | `"anyOf"` (default) | `"typeArray"` |
+##### `target: "swift-openapi-generator"`
+
+Apple's [`swift-openapi-generator`](https://github.com/apple/swift-openapi-generator)
+[cannot consume a standalone `{ "type": "null" }` member](https://github.com/apple/swift-openapi-generator/issues/906)
+inside an `anyOf`/`oneOf` (it **silently drops the entire property**), and it explodes large
+`const` string unions into hundreds of single-case enums. This target rewrites the document
+so those shapes generate clean Swift:
+
+| Nullable shape | default | `"swift-openapi-generator"` |
 | --- | --- | --- |
 | object | `anyOf: [{ type: "object", … }, { type: "null" }]` | `{ type: ["object", "null"], … }` |
 | array | `anyOf: [{ type: "array", … }, { type: "null" }]` | `{ type: ["array", "null"], … }` |
@@ -265,14 +272,13 @@ understands it:
 | standalone `{ type: "null" }` | `{ type: "null" }` | `{}` (open value, optional) |
 | large `const`-string union (≥ 20 members) | `anyOf: [{const:…} × N]` | `{ type: "string" }` |
 
-In `"typeArray"` mode the standalone `{ type: "null" }` member is eliminated from **every**
-union (`swift-openapi-generator` cannot represent it and would otherwise drop the whole
-property), and the property is removed from its object's `required` array so it generates a
-Swift optional. A standalone null-only schema becomes `{}` (an optional open value). Large
-all-`const` string unions (e.g. a 248-country or 418-timezone list) collapse to a plain
-`string`, since the generator would otherwise explode them into hundreds of single-case
-`value1…valueN` enums; small const unions (< 20 members) are left intact. Note these
-transforms make a nullable property optional (`T?`) in generated clients.
+The standalone `{ type: "null" }` member is eliminated from **every** union, and the
+property is removed from its object's `required` array so it generates a Swift optional. A
+standalone null-only schema becomes `{}` (an optional open value). Large all-`const` string
+unions (e.g. a 248-country or 418-timezone list) collapse to a plain `string`, since the
+generator would otherwise explode them into hundreds of single-case `value1…valueN` enums;
+small const unions (< 20 members) are left intact. Note these transforms make a nullable
+property optional (`T?`) in generated clients.
 
 ## Contributing
 

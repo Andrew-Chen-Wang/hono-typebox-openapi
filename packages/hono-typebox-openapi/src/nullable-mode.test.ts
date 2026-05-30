@@ -35,7 +35,7 @@ function responseSchema(spec: any) {
   return spec.paths["/user"].get.responses["200"].content["application/json"].schema
 }
 
-describe("nullableMode end-to-end via generateSpecs", () => {
+describe("target end-to-end via generateSpecs", () => {
   it('default ("anyOf") keeps {type:null} members — unchanged for web clients', async () => {
     const spec = await generateSpecs(makeApp())
     const s = responseSchema(spec)
@@ -45,8 +45,8 @@ describe("nullableMode end-to-end via generateSpecs", () => {
     expect(s.required).toContain("jobDetails")
   })
 
-  it('"typeArray" emits swift-compatible shapes and no standalone {type:null}', async () => {
-    const spec = await generateSpecs(makeApp(), { nullableMode: "typeArray" })
+  it('target "swift-openapi-generator" emits compatible shapes and no standalone {type:null}', async () => {
+    const spec = await generateSpecs(makeApp(), { target: "swift-openapi-generator" })
     const s = responseSchema(spec)
     expect(s.properties.jobDetails.type).toEqual(["object", "null"])
     expect(s.properties.tags.type).toEqual(["array", "null"])
@@ -59,19 +59,19 @@ describe("nullableMode end-to-end via generateSpecs", () => {
   })
 
   // Regression: generateSpecs must not mutate the shared route definition, so generating
-  // multiple specs from the SAME app (e.g. a default /openapi and a typeArray /openapi-ios)
-  // in any order must each produce mode-correct output independently.
-  it("does not leak typeArray output into a later default-mode spec on the same app", async () => {
+  // multiple specs from the SAME app (e.g. a default /openapi and a swift /openapi-ios)
+  // in any order must each produce target-correct output independently.
+  it("does not leak swift-target output into a later default spec on the same app", async () => {
     const app = makeApp()
-    // typeArray first (the order that previously contaminated the cached schema)
-    const ios = responseSchema(await generateSpecs(app, { nullableMode: "typeArray" }))
+    // swift target first (the order that previously contaminated the cached schema)
+    const ios = responseSchema(await generateSpecs(app, { target: "swift-openapi-generator" }))
     expect(ios.required).toEqual(["id"])
     // default afterwards must still be the untouched anyOf form
     const web = responseSchema(await generateSpecs(app))
     expect(web.properties.jobDetails.anyOf).toContainEqual({ type: "null" })
     expect(web.required).toContain("jobDetails")
-    // and typeArray again is still correct
-    const ios2 = responseSchema(await generateSpecs(app, { nullableMode: "typeArray" }))
+    // and the swift target again is still correct
+    const ios2 = responseSchema(await generateSpecs(app, { target: "swift-openapi-generator" }))
     expect(ios2.properties.jobDetails.type).toEqual(["object", "null"])
   })
 })
