@@ -1,16 +1,20 @@
 import { type TSchema, Type } from "typebox"
 import { describe, expect, it } from "vitest"
-import convert, { type NullableMode } from "./toOpenAPISchema"
+import convert from "./toOpenAPISchema"
 
 // Mirrors the `Nullable` helper used by consumers: `Type.Union([T, Type.Null()])`,
 // which TypeBox emits as `anyOf: [<schema>, { type: "null" }]`.
 const Nullable = <T extends TSchema>(T: T) => Type.Union([T, Type.Null()])
 
 // `convert` is typed to return an OpenAPI Document; for these schema-level assertions we
-// view the result as a plain JSON Schema record.
+// view the result as a plain JSON Schema record. `swiftGenerator` selects the
+// `target: "swift-openapi-generator"` normalization; omitted = default 3.1 output.
 type SchemaRecord = Record<string, unknown>
-const toSchema = async (schema: TSchema, mode?: NullableMode): Promise<SchemaRecord> =>
-  (await convert(schema, mode ? { nullableMode: mode } : undefined)) as unknown as SchemaRecord
+const toSchema = async (schema: TSchema, swiftGenerator?: boolean): Promise<SchemaRecord> =>
+  (await convert(
+    schema,
+    swiftGenerator ? { target: "swift-openapi-generator" } : undefined,
+  )) as unknown as SchemaRecord
 
 describe("collapseNullable", () => {
   describe('default "anyOf" mode (web-client compatible — must not change)', () => {
@@ -47,9 +51,9 @@ describe("collapseNullable", () => {
     })
   })
 
-  describe('"typeArray" mode (swift-openapi-generator compatible)', () => {
+  describe('target: "swift-openapi-generator"', () => {
     it("folds a nullable object into a type array, lifting properties/required", async () => {
-      const out = await toSchema(Nullable(Type.Object({ a: Type.String() })), "typeArray")
+      const out = await toSchema(Nullable(Type.Object({ a: Type.String() })), true)
       expect(out.anyOf).toBeUndefined()
       expect(out.type).toEqual(["object", "null"])
       expect(out.required).toEqual(["a"])
@@ -57,14 +61,14 @@ describe("collapseNullable", () => {
     })
 
     it("folds a nullable array into a type array, lifting items", async () => {
-      const out = await toSchema(Nullable(Type.Array(Type.String())), "typeArray")
+      const out = await toSchema(Nullable(Type.Array(Type.String())), true)
       expect(out.anyOf).toBeUndefined()
       expect(out.type).toEqual(["array", "null"])
       expect(out.items).toEqual({ type: "string" })
     })
 
     it("folds a nullable $ref into a bare $ref (drops the null branch)", async () => {
-      const out = await toSchema(Nullable(Type.Ref("#/components/schemas/Foo")), "typeArray")
+      const out = await toSchema(Nullable(Type.Ref("#/components/schemas/Foo")), true)
       expect(out.anyOf).toBeUndefined()
       expect(out.$ref).toBe("#/components/schemas/Foo")
       expect(JSON.stringify(out)).not.toContain('"null"')
@@ -76,7 +80,7 @@ describe("collapseNullable", () => {
           id: Type.String(),
           matchData: Nullable(Type.Ref("#/components/schemas/Foo")),
         }),
-        "typeArray",
+        true,
       )
       expect(out.required).toEqual(["id"])
       expect((out.properties as Record<string, unknown>).matchData).toEqual({
@@ -87,13 +91,13 @@ describe("collapseNullable", () => {
     it("removes required entirely when every property is nullable", async () => {
       const out = await toSchema(
         Type.Object({ a: Nullable(Type.Object({ x: Type.String() })) }),
-        "typeArray",
+        true,
       )
       expect(out.required).toBeUndefined()
     })
 
     it("still folds a nullable scalar with format (regression)", async () => {
-      const out = await toSchema(Nullable(Type.String({ format: "date-time" })), "typeArray")
+      const out = await toSchema(Nullable(Type.String({ format: "date-time" })), true)
       expect(out.type).toEqual(["string", "null"])
       expect(out.format).toBe("date-time")
       expect(out.anyOf).toBeUndefined()
@@ -101,14 +105,14 @@ describe("collapseNullable", () => {
 
     it("drops the null member from a union with multiple non-null members", async () => {
       // swift-openapi-generator cannot consume a {type:null} member even in a multi-member
-      // union, so typeArray mode strips it and keeps the remaining members as anyOf.
+      // union, so the swift target strips it and keeps the remaining members as anyOf.
       const out = await toSchema(
         Type.Union([
           Type.Object({ a: Type.String() }),
           Type.Object({ b: Type.Number() }),
           Type.Null(),
         ]),
-        "typeArray",
+        true,
       )
       expect(out.anyOf).toBeDefined()
       expect(out.type).toBeUndefined()
@@ -119,7 +123,7 @@ describe("collapseNullable", () => {
     it("preserves union-level annotations when folding an object", async () => {
       const out = await toSchema(
         Type.Union([Type.Object({ a: Type.String() }), Type.Null()], { description: "d" }),
-        "typeArray",
+        true,
       )
       expect(out.type).toEqual(["object", "null"])
       expect(out.description).toBe("d")

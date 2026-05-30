@@ -13,13 +13,13 @@ export interface Options {
   convertUnreferencedDefinitions?: boolean
   dereferenceOptions?: ParserOptions | undefined
   /**
-   * How to express nullable objects/arrays/refs. See `OpenApiSpecsOptions.nullableMode`.
-   * @default "anyOf"
+   * Downstream consumer to normalize the document for. See `OpenApiSpecsOptions.target`.
+   * Unset = idiomatic OpenAPI 3.1 (default). See {@link OpenApiTarget}.
    */
-  nullableMode?: NullableMode
+  target?: OpenApiTarget
 }
 
-export type NullableMode = "anyOf" | "typeArray"
+export type OpenApiTarget = "swift-openapi-generator"
 type ExtendedJSONSchema = addPrefixToObject & JSONSchema
 export type SchemaType = ExtendedJSONSchema
 export type SchemaTypeKeys = keyof SchemaType
@@ -105,7 +105,7 @@ const oasExtensionPrefix = "x-"
 const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
   def: JSONSchema7Definition | JSONSchema6Definition | JSONSchema4,
   schema: T,
-  mode: NullableMode,
+  swiftGenerator: boolean,
 ) => {
   if (typeof def !== "object") {
     return def
@@ -132,7 +132,7 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
         },
       },
     )
-    await walker.walk(makeConvertSchema(mode), walker.vocabularies.DRAFT_07)
+    await walker.walk(makeConvertSchema(swiftGenerator), walker.vocabularies.DRAFT_07)
     if ("definitions" in walker.rootSchema) {
       walker.rootSchema.definitions = undefined
     }
@@ -153,15 +153,17 @@ const convert = async <T extends object = JSONSchema4>(
 ): Promise<OpenAPIV3_1.Document> => {
   const walker = new Walker<T>()
   const convertDefs = options?.convertUnreferencedDefinitions ?? true
-  const mode: NullableMode = options?.nullableMode ?? "anyOf"
+  // Internal flag: the swift-openapi-generator target needs the extra normalization passes.
+  // (Future targets like an Android generator would get their own flag/passes here.)
+  const swiftGenerator = options?.target === "swift-openapi-generator"
   await walker.loadSchema(schema, options)
-  await walker.walk(makeConvertSchema(mode), walker.vocabularies.DRAFT_07)
+  await walker.walk(makeConvertSchema(swiftGenerator), walker.vocabularies.DRAFT_07)
   // if we want to convert unreferenced definitions, we need to do it iteratively here
   const rootSchema = walker.rootSchema as unknown as JSONSchema
   if (convertDefs && rootSchema.definitions) {
     for (const defName in rootSchema.definitions) {
       const def = rootSchema.definitions[defName]
-      rootSchema.definitions[defName] = await handleDefinition(def, schema, mode)
+      rootSchema.definitions[defName] = await handleDefinition(def, schema, swiftGenerator)
     }
   }
   return rootSchema as OpenAPIV3_1.Document
@@ -180,9 +182,10 @@ function stripIllegalKeywords(schema: SchemaType) {
 }
 
 // The walker visits each schema node pre-order (top-down), invoking this callback
-// before descending into `anyOf`/`oneOf` members. The closed-over `mode` selects how
-// nullable unions are rendered (see `collapseNullable` / `unrequireNullableProps`).
-const makeConvertSchema = (mode: NullableMode) => (schema?: SchemaType) => {
+// before descending into `anyOf`/`oneOf` members. The closed-over `swiftGenerator` flag
+// enables the swift-openapi-generator normalization passes (see `collapseNullable` /
+// `unrequireNullableProps`).
+const makeConvertSchema = (swiftGenerator: boolean) => (schema?: SchemaType) => {
   let _schema = schema
 
   if (!_schema) {
@@ -192,13 +195,13 @@ const makeConvertSchema = (mode: NullableMode) => (schema?: SchemaType) => {
   _schema = stripIllegalKeywords(_schema)
   // Runs before child unions are collapsed, while each property still carries its raw
   // `anyOf:[...,{type:null}]`, so it can detect which properties are nullable.
-  if (mode === "typeArray") {
+  if (swiftGenerator) {
     _schema = unrequireNullableProps(_schema)
     _schema = collapseLargeConstUnion(_schema)
     _schema = openTypeNullSchema(_schema)
   }
   _schema = convertTypes(_schema)
-  _schema = collapseNullable(_schema, mode)
+  _schema = collapseNullable(_schema, swiftGenerator)
 
   if (_schema.type === "array" && typeof _schema.items === "undefined") {
     _schema.items = {}
@@ -233,9 +236,9 @@ function validateType(type: unknown) {
 const scalarTypes = new Set(["string", "number", "integer", "boolean"])
 
 // Collapse a `{ anyOf | oneOf }` union that contains a bare `{ type: "null" }` member
-// into an idiomatic OpenAPI 3.1 nullable type. The shapes handled depend on `mode`.
+// into an idiomatic OpenAPI 3.1 nullable type. The shapes handled depend on `swiftGenerator`.
 //
-// Always (both modes):
+// Always (both targets):
 //   1. Every non-null member is a bare `{ type: <string> }` → fold the whole union
 //      into a type array, e.g. `string | null` → `{ type: ["string", "null"] }`.
 //   2. Exactly one non-null member, and it is a *scalar* (string/number/integer/
@@ -244,8 +247,8 @@ const scalarTypes = new Set(["string", "number", "integer", "boolean"])
 //      This is safe because scalar constraints (format, pattern, minLength, minimum,
 //      …) only apply to their own type and are ignored for `null`.
 //
-// Additionally when `mode === "typeArray"` (for swift-openapi-generator, which cannot
-// consume a standalone `{ type: "null" }` member and otherwise drops the property):
+// Additionally when `swiftGenerator` (for swift-openapi-generator, which cannot consume a
+// standalone `{ type: "null" }` member and otherwise drops the property):
 //   A. A single inline object member → `{ type: ["object", "null"], properties, … }`.
 //   B. A single inline array member  → `{ type: ["array", "null"], items, … }`.
 //   C. A single bare `$ref` member   → the bare `{ $ref }` (the `{type:null}` branch is
@@ -255,12 +258,12 @@ const scalarTypes = new Set(["string", "number", "integer", "boolean"])
 //      `{}`, …) → inline that member in place of the whole union (`inlineSoleMember`).
 //   E. Several non-null members → just drop the `{type:null}` member, leaving a valid
 //      multi-member union.
-//   In every typeArray case the standalone `{type:null}` is eliminated, because
+//   In every swiftGenerator case the standalone `{type:null}` is eliminated, because
 //   swift-openapi-generator cannot represent it and would drop the whole property.
 //
-// In the default `anyOf` mode, only shapes 1 & 2 apply; anything else is left as the
-// original `anyOf`, which is already valid, idiomatic 3.1.
-function collapseNullable(schema: SchemaType, mode: NullableMode) {
+// In the default (non-swiftGenerator) target, only shapes 1 & 2 apply; anything else is
+// left as the original `anyOf`, which is already valid, idiomatic 3.1.
+function collapseNullable(schema: SchemaType, swiftGenerator: boolean) {
   for (const key of ["oneOf", "anyOf"] as const) {
     const schemas = schema[key] as JSONSchema4[] | undefined
     if (!Array.isArray(schemas)) continue
@@ -295,7 +298,7 @@ function collapseNullable(schema: SchemaType, mode: NullableMode) {
       continue
     }
 
-    if (mode !== "typeArray") continue
+    if (!swiftGenerator) continue
 
     // Shape A: a single inline object member.
     if (isMergeableObject(member)) {
@@ -316,7 +319,7 @@ function collapseNullable(schema: SchemaType, mode: NullableMode) {
       continue
     }
 
-    // General fallback (typeArray): any other single non-null member — a nested
+    // General fallback (swiftGenerator): any other single non-null member — a nested
     // `anyOf`/`oneOf`, a `const`/`enum`, an empty `{}`, etc. swift-openapi-generator still
     // cannot tolerate the `{type:"null"}` sibling, so inline the lone member in place of
     // the whole union. (`unrequireNullableProps` has already marked the property optional.)
@@ -324,9 +327,9 @@ function collapseNullable(schema: SchemaType, mode: NullableMode) {
   }
 
   // The single-member branches above all `continue`. Multi-member nullable unions
-  // (e.g. `anyOf[array, scalar, scalar, null]`) fall through to here in typeArray mode:
-  // drop just the `{type:"null"}` member, leaving a valid multi-member union.
-  if (mode === "typeArray") {
+  // (e.g. `anyOf[array, scalar, scalar, null]`) fall through to here in the swiftGenerator
+  // target: drop just the `{type:"null"}` member, leaving a valid multi-member union.
+  if (swiftGenerator) {
     for (const key of ["oneOf", "anyOf"] as const) {
       const schemas = schema[key] as JSONSchema4[] | undefined
       if (!Array.isArray(schemas)) continue
@@ -366,7 +369,7 @@ function isConstString(item: JSONSchema4) {
 // country ~248, timezone ~418) into a plain `{ type: "string" }`. swift-openapi-generator
 // otherwise explodes each into hundreds of single-case `value1…valueN` enums, which are
 // unusable in a form. Small const unions (forum `_type`, moderation enums, …) are left
-// untouched. typeArray-only, so the default `anyOf` mode (web client) is unaffected.
+// untouched. swiftGenerator-only, so the default target (web client) is unaffected.
 function collapseLargeConstUnion(schema: SchemaType) {
   for (const key of ["anyOf", "oneOf"] as const) {
     const members = schema[key] as JSONSchema4[] | undefined
@@ -476,7 +479,7 @@ function isNullableUnion(prop: unknown): boolean {
 // A standalone `{ type: "null" }` schema (e.g. from `Type.Null()`) is unrepresentable in
 // Swift — swift-openapi-generator skips the whole property. Replace it with an empty schema
 // `{}`, which the generator models as an optional `OpenAPIValueContainer?` that decodes
-// JSON `null` to `nil`. typeArray-only; the parent `required` entry is removed by
+// JSON `null` to `nil`. swiftGenerator-only; the parent `required` entry is removed by
 // `unrequireNullableProps` (which also treats standalone null as nullable).
 function openTypeNullSchema(schema: SchemaType) {
   if (isBareType(schema as unknown as JSONSchema4, "null")) {
@@ -485,7 +488,7 @@ function openTypeNullSchema(schema: SchemaType) {
   return schema
 }
 
-// In `typeArray` mode, a nullable property must also be absent from the parent object's
+// In the swiftGenerator target, a nullable property must also be absent from the parent object's
 // `required` array for swift-openapi-generator to treat it as a Swift optional (this is
 // the only mechanism for the bare-`$ref` case, which can't carry a type array). Runs on
 // the object node before its child unions are collapsed, while properties still carry
