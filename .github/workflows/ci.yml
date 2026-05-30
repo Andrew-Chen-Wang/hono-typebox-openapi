@@ -79,7 +79,9 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v2
         with:
-          swift-version: '6.0'
+          # >= 6.1: swift-openapi-runtime 1.12.0 declares swift-tools-version 6.1, so an older
+          # toolchain cannot even read its manifest ("incompatible tools version").
+          swift-version: '6.1'
 
       - name: Install dependencies
         run: npm ci
