@@ -1,6 +1,6 @@
 {
   "name": "hono-typebox-openapi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenAPI schema generator for Hono and TypeBox",
   "type": "module",
   "main": "dist/index.cjs",

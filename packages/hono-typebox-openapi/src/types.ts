@@ -10,6 +10,7 @@ export type PromiseOr<T> = T | Promise<T>
 export type OpenAPIRouteHandlerConfig = {
   version: "3.1.0" | "3.1.1"
   components: OpenAPIV3_1.ComponentsObject["schemas"]
+  nullableMode?: "anyOf" | "typeArray"
 } & { [key: string]: unknown }
 
 export type ResolverResult = {
@@ -124,6 +125,20 @@ export type OpenApiSpecsOptions = {
    * Exclude tags from OpenAPI
    */
   excludeTags?: string[]
+
+  /**
+   * How to express nullable objects/arrays/refs in the generated OpenAPI 3.1 schema.
+   *
+   * - `"anyOf"` (default): emit `anyOf: [<schema>, { type: "null" }]`. Idiomatic 3.1,
+   *   handled correctly by most tooling (e.g. hey-api).
+   * - `"typeArray"`: fold nullable objects/arrays (and scalars) into `type: [..., "null"]`,
+   *   emit a bare `$ref` for nullable references, and drop nullable properties from `required`.
+   *   Required for Apple's swift-openapi-generator, which cannot consume a standalone
+   *   `{ type: "null" }` member inside `anyOf`/`oneOf` and otherwise silently DROPS the property.
+   *
+   * @default "anyOf"
+   */
+  nullableMode?: "anyOf" | "typeArray"
 
   /**
    * Default options for `describeRoute` method

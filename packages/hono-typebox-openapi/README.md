@@ -234,6 +234,39 @@ generateSpecs(app, options)
   })
 ```
 
+#### Nullable types & `swift-openapi-generator`
+
+A nullable schema — e.g. `Type.Union([T, Type.Null()])` — is emitted by default as
+`anyOf: [<schema>, { "type": "null" }]`. This is idiomatic OpenAPI 3.1 and is handled
+correctly by most tooling (e.g. [`@hey-api/openapi-ts`](https://heyapi.dev/)).
+
+Apple's [`swift-openapi-generator`](https://github.com/apple/swift-openapi-generator),
+however, [cannot consume a standalone `{ "type": "null" }` member](https://github.com/apple/swift-openapi-generator/issues/906)
+inside an `anyOf`/`oneOf` and **silently drops the entire property** from the generated
+client. If you target Swift, set `nullableMode: "typeArray"`:
+
+```ts
+openAPISpecs(app, { nullableMode: "typeArray" /* ... */ })
+// or
+generateSpecs(app, { nullableMode: "typeArray" /* ... */ })
+```
+
+In `"typeArray"` mode nullability is expressed the way `swift-openapi-generator`
+understands it:
+
+| Nullable shape | `"anyOf"` (default) | `"typeArray"` |
+| --- | --- | --- |
+| object | `anyOf: [{ type: "object", … }, { type: "null" }]` | `{ type: ["object", "null"], … }` |
+| array | `anyOf: [{ type: "array", … }, { type: "null" }]` | `{ type: ["array", "null"], … }` |
+| `$ref` | `anyOf: [{ $ref }, { type: "null" }]` | `{ $ref }` (nullable via being optional) |
+| scalar | `{ type: ["string", "null"] }` | `{ type: ["string", "null"] }` (same) |
+
+Because a `$ref` cannot carry a `type` array, a nullable reference is rendered as the bare
+`$ref` and made optional by **removing the property from its object's `required` array** —
+`swift-openapi-generator` treats a non-required property identically to a nullable one (a
+Swift optional). Note this means a nullable property becomes optional (`T?`) in generated
+clients under this mode.
+
 ## Contributing
 
 We would love to have more contributors involved!
