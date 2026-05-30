@@ -40,3 +40,6 @@ next-env.d.ts
 **/dist/**
 
 lefthook-local.yml
+
+# Claude Code session state (never commit)
+.claude/

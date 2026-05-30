@@ -1,0 +1,19 @@
+{
+  "name": "@api/codegen-integration",
+  "version": "1.0.0",
+  "description": "Integration tests that run real client generators (swift-openapi-generator, openapi-generator kotlin/ktor) against the generated OpenAPI spec and compile their output, plus regression tests locking in generator-compatible schema shapes.",
+  "type": "module",
+  "private": true,
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "hono": "^4.11.4",
+    "hono-typebox-openapi": "*",
+    "typebox": "^1.0.77"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.13.4"
+  }
+}

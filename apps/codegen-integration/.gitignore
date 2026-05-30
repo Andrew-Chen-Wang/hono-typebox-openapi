@@ -1,0 +1,5 @@
+# Swift artifacts are ignored by swift/.gitignore; Kotlin/Ktor by ktor/.gitignore.
+# This file covers app-wide leftovers only.
+
+# SwiftPM lockfile for this throwaway test harness (regenerated on each `swift build`)
+swift/Package.resolved
