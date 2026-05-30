@@ -99,7 +99,9 @@ describe("collapseNullable", () => {
       expect(out.anyOf).toBeUndefined()
     })
 
-    it("leaves a union with multiple non-null members as anyOf", async () => {
+    it("drops the null member from a union with multiple non-null members", async () => {
+      // swift-openapi-generator cannot consume a {type:null} member even in a multi-member
+      // union, so typeArray mode strips it and keeps the remaining members as anyOf.
       const out = await toSchema(
         Type.Union([
           Type.Object({ a: Type.String() }),
@@ -110,7 +112,8 @@ describe("collapseNullable", () => {
       )
       expect(out.anyOf).toBeDefined()
       expect(out.type).toBeUndefined()
-      expect(out.anyOf).toContainEqual({ type: "null" })
+      expect(out.anyOf).not.toContainEqual({ type: "null" })
+      expect((out.anyOf as unknown[]).length).toBe(2)
     })
 
     it("preserves union-level annotations when folding an object", async () => {
