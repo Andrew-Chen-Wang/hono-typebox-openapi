@@ -260,12 +260,19 @@ understands it:
 | array | `anyOf: [{ type: "array", … }, { type: "null" }]` | `{ type: ["array", "null"], … }` |
 | `$ref` | `anyOf: [{ $ref }, { type: "null" }]` | `{ $ref }` (nullable via being optional) |
 | scalar | `{ type: ["string", "null"] }` | `{ type: ["string", "null"] }` (same) |
+| single other member (nested union, `const`/`enum`, …) | `anyOf: [<member>, { type: "null" }]` | `<member>` (inlined) |
+| several members + null | `anyOf: [a, b, { type: "null" }]` | `anyOf: [a, b]` (null dropped) |
+| standalone `{ type: "null" }` | `{ type: "null" }` | `{}` (open value, optional) |
+| large `const`-string union (≥ 20 members) | `anyOf: [{const:…} × N]` | `{ type: "string" }` |
 
-Because a `$ref` cannot carry a `type` array, a nullable reference is rendered as the bare
-`$ref` and made optional by **removing the property from its object's `required` array** —
-`swift-openapi-generator` treats a non-required property identically to a nullable one (a
-Swift optional). Note this means a nullable property becomes optional (`T?`) in generated
-clients under this mode.
+In `"typeArray"` mode the standalone `{ type: "null" }` member is eliminated from **every**
+union (`swift-openapi-generator` cannot represent it and would otherwise drop the whole
+property), and the property is removed from its object's `required` array so it generates a
+Swift optional. A standalone null-only schema becomes `{}` (an optional open value). Large
+all-`const` string unions (e.g. a 248-country or 418-timezone list) collapse to a plain
+`string`, since the generator would otherwise explode them into hundreds of single-case
+`value1…valueN` enums; small const unions (< 20 members) are left intact. Note these
+transforms make a nullable property optional (`T?`) in generated clients.
 
 ## Contributing
 

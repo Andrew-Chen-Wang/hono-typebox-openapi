@@ -192,7 +192,11 @@ const makeConvertSchema = (mode: NullableMode) => (schema?: SchemaType) => {
   _schema = stripIllegalKeywords(_schema)
   // Runs before child unions are collapsed, while each property still carries its raw
   // `anyOf:[...,{type:null}]`, so it can detect which properties are nullable.
-  if (mode === "typeArray") _schema = unrequireNullableProps(_schema)
+  if (mode === "typeArray") {
+    _schema = unrequireNullableProps(_schema)
+    _schema = collapseLargeConstUnion(_schema)
+    _schema = openTypeNullSchema(_schema)
+  }
   _schema = convertTypes(_schema)
   _schema = collapseNullable(_schema, mode)
 
@@ -247,9 +251,15 @@ const scalarTypes = new Set(["string", "number", "integer", "boolean"])
 //   C. A single bare `$ref` member   → the bare `{ $ref }` (the `{type:null}` branch is
 //      dropped; nullability is instead carried by the property being absent from the
 //      parent `required`, handled in `unrequireNullableProps`).
+//   D. Any other single non-null member (nested `anyOf`/`oneOf`, `const`/`enum`, empty
+//      `{}`, …) → inline that member in place of the whole union (`inlineSoleMember`).
+//   E. Several non-null members → just drop the `{type:null}` member, leaving a valid
+//      multi-member union.
+//   In every typeArray case the standalone `{type:null}` is eliminated, because
+//   swift-openapi-generator cannot represent it and would drop the whole property.
 //
-// Anything else — `const`/`enum` members (which would forbid `null`) or unions with
-// several non-null members — is left as `anyOf`, which is already valid 3.1.
+// In the default `anyOf` mode, only shapes 1 & 2 apply; anything else is left as the
+// original `anyOf`, which is already valid, idiomatic 3.1.
 function collapseNullable(schema: SchemaType, mode: NullableMode) {
   for (const key of ["oneOf", "anyOf"] as const) {
     const schemas = schema[key] as JSONSchema4[] | undefined
@@ -303,9 +313,69 @@ function collapseNullable(schema: SchemaType, mode: NullableMode) {
     if (isBareRef(member)) {
       schema[key] = undefined
       schema.$ref = member.$ref
+      continue
+    }
+
+    // General fallback (typeArray): any other single non-null member — a nested
+    // `anyOf`/`oneOf`, a `const`/`enum`, an empty `{}`, etc. swift-openapi-generator still
+    // cannot tolerate the `{type:"null"}` sibling, so inline the lone member in place of
+    // the whole union. (`unrequireNullableProps` has already marked the property optional.)
+    inlineSoleMember(schema, key, member)
+  }
+
+  // The single-member branches above all `continue`. Multi-member nullable unions
+  // (e.g. `anyOf[array, scalar, scalar, null]`) fall through to here in typeArray mode:
+  // drop just the `{type:"null"}` member, leaving a valid multi-member union.
+  if (mode === "typeArray") {
+    for (const key of ["oneOf", "anyOf"] as const) {
+      const schemas = schema[key] as JSONSchema4[] | undefined
+      if (!Array.isArray(schemas)) continue
+      if (!schemas.some((item) => isBareType(item, "null"))) continue
+      schema[key] = schemas.filter(
+        (item) => !isBareType(item, "null"),
+      ) as SchemaType[keyof SchemaType]
     }
   }
 
+  return schema
+}
+
+// Replace a nullable combiner with its sole non-null member: drop the combiner key and
+// copy the member's keywords onto the parent (member wins on overlap, since the member is
+// the intended schema). Parent-only keys — e.g. a `description` annotating the union — are
+// preserved. Mirrors the Python normalizer's single-member `strip_null` collapse.
+function inlineSoleMember(schema: SchemaType, key: "oneOf" | "anyOf", member: JSONSchema4) {
+  schema[key] = undefined
+  for (const [k, value] of Object.entries(member)) {
+    if (value === undefined || k.startsWith("~")) continue
+    schema[k as keyof SchemaType] = value
+  }
+}
+
+const LARGE_CONST_UNION_MIN = 20
+
+// True for a `{ type: "string", const: <value> }` member (the shape TypeBox emits for
+// each literal in a large string union, e.g. every country / timezone name).
+function isConstString(item: JSONSchema4) {
+  return (
+    typeof item === "object" && item !== null && item.type === "string" && item.const !== undefined
+  )
+}
+
+// Collapse a large `anyOf`/`oneOf` of `{type:"string", const:…}` members (>= 20, e.g.
+// country ~248, timezone ~418) into a plain `{ type: "string" }`. swift-openapi-generator
+// otherwise explodes each into hundreds of single-case `value1…valueN` enums, which are
+// unusable in a form. Small const unions (forum `_type`, moderation enums, …) are left
+// untouched. typeArray-only, so the default `anyOf` mode (web client) is unaffected.
+function collapseLargeConstUnion(schema: SchemaType) {
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const members = schema[key] as JSONSchema4[] | undefined
+    if (!Array.isArray(members) || members.length < LARGE_CONST_UNION_MIN) continue
+    if (members.every(isConstString)) {
+      schema[key] = undefined
+      schema.type = "string"
+    }
+  }
   return schema
 }
 
@@ -390,15 +460,29 @@ function isBareType(item: JSONSchema4, expected?: string) {
   return expected === undefined || item.type === expected
 }
 
-// True when a property schema is a nullable union: an `anyOf`/`oneOf` containing a bare
-// `{ type: "null" }` member. Used to decide which properties to drop from `required`.
+// True when a property schema is effectively nullable and should be dropped from a parent
+// `required` array: either an `anyOf`/`oneOf` containing a bare `{ type: "null" }` member,
+// or a standalone `{ type: "null" }` (a null-only field — always absent in practice).
 function isNullableUnion(prop: unknown): boolean {
   if (typeof prop !== "object" || prop === null) return false
+  if (isBareType(prop as JSONSchema4, "null")) return true
   for (const key of ["anyOf", "oneOf"] as const) {
     const arr = (prop as Record<string, unknown>)[key]
     if (Array.isArray(arr) && arr.some((m) => isBareType(m, "null"))) return true
   }
   return false
+}
+
+// A standalone `{ type: "null" }` schema (e.g. from `Type.Null()`) is unrepresentable in
+// Swift — swift-openapi-generator skips the whole property. Replace it with an empty schema
+// `{}`, which the generator models as an optional `OpenAPIValueContainer?` that decodes
+// JSON `null` to `nil`. typeArray-only; the parent `required` entry is removed by
+// `unrequireNullableProps` (which also treats standalone null as nullable).
+function openTypeNullSchema(schema: SchemaType) {
+  if (isBareType(schema as unknown as JSONSchema4, "null")) {
+    schema.type = undefined
+  }
+  return schema
 }
 
 // In `typeArray` mode, a nullable property must also be absent from the parent object's
