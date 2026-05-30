@@ -1,5 +1,5 @@
 import type { ValidationTargets } from "hono"
-import type { OpenAPIV3 } from "openapi-types"
+import type { OpenAPIV3_1 } from "openapi-types"
 import type { ResolverResult } from "./types"
 
 /**
@@ -15,7 +15,7 @@ export async function generateValidatorDocs<Target extends keyof ValidationTarge
   _result: ReturnType<ResolverResult["builder"]>,
 ) {
   const result = await _result
-  const docs: Pick<OpenAPIV3.OperationObject, "parameters" | "requestBody"> = {}
+  const docs: Pick<OpenAPIV3_1.OperationObject, "parameters" | "requestBody"> = {}
 
   if (target === "form" || target === "json") {
     const media = target === "json" ? "application/json" : "multipart/form-data"
@@ -33,7 +33,7 @@ export async function generateValidatorDocs<Target extends keyof ValidationTarge
       }
     }
   } else {
-    const parameters: (OpenAPIV3.ReferenceObject | OpenAPIV3.ParameterObject)[] = []
+    const parameters: (OpenAPIV3_1.ReferenceObject | OpenAPIV3_1.ParameterObject)[] = []
 
     if ("$ref" in result.schema) {
       parameters.push({
@@ -46,7 +46,9 @@ export async function generateValidatorDocs<Target extends keyof ValidationTarge
         parameters.push({
           in: target,
           name: key,
-          schema: value,
+          // openapi-types still types ParameterObject.schema with the stricter OAS 3.0
+          // SchemaObject, so cast the 3.1 schema value through.
+          schema: value as OpenAPIV3_1.ParameterObject["schema"],
           required: result.schema.required?.includes(key),
         })
       }

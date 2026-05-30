@@ -1,7 +1,7 @@
 import type { JSONSchema, ParserOptions } from "@apidevtools/json-schema-ref-parser"
 import type { JSONSchema4, JSONSchema6Definition, JSONSchema7Definition } from "json-schema"
 import { Walker } from "json-schema-walker"
-import type { OpenAPIV3 } from "openapi-types"
+import type { OpenAPIV3_1 } from "openapi-types"
 
 export type addPrefixToObject = {
   [K in keyof JSONSchema as `x-${K}`]: JSONSchema[K]
@@ -14,51 +14,74 @@ export interface Options {
   dereferenceOptions?: ParserOptions | undefined
 }
 type ExtendedJSONSchema = addPrefixToObject & JSONSchema
-export type SchemaType = ExtendedJSONSchema & {
-  example?: JSONSchema["examples"][number]
-  "x-patternProperties"?: JSONSchema["patternProperties"]
-  nullable?: boolean
-}
+export type SchemaType = ExtendedJSONSchema
 export type SchemaTypeKeys = keyof SchemaType
 
+// OpenAPI 3.1 Schema Objects are a superset of JSON Schema 2020-12, so the
+// allowed keywords are the 2020-12 vocabulary plus the OAS-specific annotations.
+// Anything outside this list is rewritten into an `x-` extension.
 const allowedKeywords = [
   "$ref",
+  "$defs",
   "definitions",
-  // From Schema
+  "$comment",
+  // Core / metadata
   "title",
+  "description",
+  "default",
+  "examples",
+  "deprecated",
+  "readOnly",
+  "writeOnly",
+  // Numbers
   "multipleOf",
   "maximum",
   "exclusiveMaximum",
   "minimum",
   "exclusiveMinimum",
+  // Strings
   "maxLength",
   "minLength",
   "pattern",
+  "format",
+  "contentEncoding",
+  "contentMediaType",
+  "contentSchema",
+  // Arrays
+  "items",
+  "prefixItems",
   "maxItems",
   "minItems",
   "uniqueItems",
+  "contains",
+  "minContains",
+  "maxContains",
+  "unevaluatedItems",
+  // Objects
+  "properties",
+  "patternProperties",
+  "additionalProperties",
+  "propertyNames",
   "maxProperties",
   "minProperties",
   "required",
-  "enum",
+  "dependentRequired",
+  "dependentSchemas",
+  "unevaluatedProperties",
+  // Generic / applicators
   "type",
+  "enum",
+  "const",
   "not",
   "allOf",
   "oneOf",
   "anyOf",
-  "items",
-  "properties",
-  "additionalProperties",
-  "description",
-  "format",
-  "default",
-  "nullable",
+  "if",
+  "then",
+  "else",
+  // OAS-specific
   "discriminator",
-  "readOnly",
-  "writeOnly",
-  "example",
   "externalDocs",
-  "deprecated",
   "xml",
 ]
 
@@ -108,17 +131,9 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
     return walker.rootSchema
   }
   if (Array.isArray(def)) {
-    // if it's an array, we might want to reconstruct the type;
-    const typeArr = def
-    const hasNull = typeArr.includes("null")
-    if (hasNull) {
-      const actualTypes = typeArr.filter((l) => l !== "null")
-      return {
-        type: actualTypes.length === 1 ? actualTypes[0] : actualTypes,
-        nullable: true,
-        // this is incorrect but thats ok, we are in the inbetween phase here
-      } as JSONSchema7Definition | JSONSchema6Definition | JSONSchema4
-    }
+    // A bare type array (e.g. ["string", "null"]) is already valid in OpenAPI 3.1,
+    // so keep it as-is.
+    return { type: def } as JSONSchema7Definition | JSONSchema6Definition | JSONSchema4
   }
 
   return def
@@ -127,7 +142,7 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
 const convert = async <T extends object = JSONSchema4>(
   schema: T,
   options?: Options,
-): Promise<OpenAPIV3.Document> => {
+): Promise<OpenAPIV3_1.Document> => {
   const walker = new Walker<T>()
   const convertDefs = options?.convertUnreferencedDefinitions ?? true
   await walker.loadSchema(schema, options)
@@ -140,7 +155,7 @@ const convert = async <T extends object = JSONSchema4>(
       rootSchema.definitions[defName] = await handleDefinition(def, schema)
     }
   }
-  return rootSchema as OpenAPIV3.Document
+  return rootSchema as OpenAPIV3_1.Document
 }
 
 function stripIllegalKeywords(schema: SchemaType) {
@@ -164,16 +179,7 @@ function convertSchema(schema?: SchemaType) {
 
   _schema = stripIllegalKeywords(_schema)
   _schema = convertTypes(_schema)
-  _schema = rewriteConst(_schema)
-  _schema = convertDependencies(_schema)
-  _schema = convertNullable(_schema)
-  _schema = rewriteIfThenElse(_schema)
-  _schema = rewriteExclusiveMinMax(_schema)
-  _schema = convertExamples(_schema)
-
-  if (typeof _schema.patternProperties === "object") {
-    _schema = convertPatternProperties(_schema)
-  }
+  _schema = collapseNullable(_schema)
 
   if (_schema.type === "array" && typeof _schema.items === "undefined") {
     _schema.items = {}
@@ -205,75 +211,91 @@ function validateType(type: unknown) {
   }
 }
 
-function convertDependencies(schema: SchemaType) {
-  const deps = schema.dependencies
-  if (typeof deps !== "object") {
-    return schema
-  }
+const scalarTypes = new Set(["string", "number", "integer", "boolean"])
 
-  // Turns the dependencies keyword into an allOf of oneOf's
-  // "dependencies": {
-  // 		"post-office-box": ["street-address"]
-  // },
-  //
-  // becomes
-  //
-  // "allOf": [
-  // 	{
-  // 		"oneOf": [
-  // 			{"not": {"required": ["post-office-box"]}},
-  // 			{"required": ["post-office-box", "street-address"]}
-  // 		]
-  // 	}
-  //
+// Collapse a `{ anyOf | oneOf }` union that contains a bare `{ type: "null" }` member
+// into an idiomatic OpenAPI 3.1 nullable type. Two shapes are handled:
+//
+//   1. Every non-null member is a bare `{ type: <string> }` → fold the whole union
+//      into a type array, e.g. `string | null` → `{ type: ["string", "null"] }`.
+//   2. Exactly one non-null member, and it is a *scalar* (string/number/integer/
+//      boolean) with no `const`/`enum` → lift its keywords onto the parent and make
+//      the type nullable, e.g. `{ type: ["string", "null"], format: "date-time" }`.
+//      This is safe because scalar constraints (format, pattern, minLength, minimum,
+//      …) only apply to their own type and are ignored for `null`.
+//
+// Anything else — `const`/`enum` members (which would forbid `null`), object/array/
+// `$ref` members, or unions with several non-null members — is left as `anyOf`,
+// which is already valid, idiomatic 3.1.
+function collapseNullable(schema: SchemaType) {
+  for (const key of ["oneOf", "anyOf"] as const) {
+    const schemas = schema[key] as JSONSchema4[] | undefined
+    if (!Array.isArray(schemas)) continue
 
-  schema.dependencies = undefined
-  if (!Array.isArray(schema.allOf)) {
-    schema.allOf = []
-  }
+    const hasNull = schemas.some((item) => isBareType(item, "null"))
+    if (!hasNull) continue
 
-  for (const key in deps) {
-    const foo: (JSONSchema4 & JSONSchema6Definition) & JSONSchema7Definition = {
-      oneOf: [
-        {
-          not: {
-            required: [key],
-          },
-        },
-        {
-          required: [key, deps[key]].flat() as string[],
-        },
-      ],
+    const others = schemas.filter((item) => !isBareType(item, "null"))
+
+    // Shape 1: every non-null member is a bare type.
+    if (others.every((item) => isBareType(item))) {
+      const types: string[] = []
+      for (const item of schemas) {
+        const t = item.type
+        for (const value of Array.isArray(t) ? t : [t]) {
+          if (typeof value === "string" && !types.includes(value)) {
+            types.push(value)
+          }
+        }
+      }
+      schema[key] = undefined
+      schema.type = (types.length === 1 ? types[0] : types) as SchemaType["type"]
+      continue
     }
-    schema.allOf.push(foo)
+
+    // Shape 2: a single constrained scalar member.
+    if (others.length === 1 && isMergeableScalar(others[0])) {
+      const member = others[0]
+      for (const [k, value] of Object.entries(member)) {
+        if (k === "type" || value === undefined || k.startsWith("~")) continue
+        // Preserve any union-level annotations already on the parent.
+        if (schema[k as keyof SchemaType] === undefined) {
+          schema[k as keyof SchemaType] = value
+        }
+      }
+      schema[key] = undefined
+      schema.type = [member.type as string, "null"] as SchemaType["type"]
+    }
   }
+
   return schema
 }
 
-function convertNullable(schema: SchemaType) {
-  for (const key of ["oneOf", "anyOf"] as const) {
-    const schemas = schema[key] as JSONSchema4[]
-    if (!schemas) continue
+// A scalar schema whose keywords are safe to fold onto a nullable parent: a single
+// scalar `type` with no value-restricting `const`/`enum` (those would reject `null`)
+// and no `$ref`.
+function isMergeableScalar(item: JSONSchema4) {
+  if (typeof item !== "object" || item === null) return false
+  if (typeof item.type !== "string" || !scalarTypes.has(item.type)) return false
+  if (item.const !== undefined || item.enum !== undefined) return false
+  if ("$ref" in item && item.$ref) return false
+  return true
+}
 
-    if (!Array.isArray(schemas)) {
-      return schema
-    }
-
-    const hasNullable = schemas.some((item) => item.type === "null")
-
-    if (!hasNullable) {
-      return schema
-    }
-
-    const filtered = schemas.filter((l) => l.type !== "null")
-    for (const schemaEntry of filtered) {
-      schemaEntry.nullable = true
-    }
-
-    schema[key] = filtered
-  }
-
-  return schema
+// True when `item` constrains only its `type` (a single string). Validation-
+// affecting keywords (const, pattern, enum, format, …) block this so we never
+// fold them onto the implicit `null` branch — but non-validation noise is ignored:
+// `undefined` leftovers from earlier passes, `x-` extensions, and TypeBox internals
+// like `~kind` (leaked by `Clone`), all of which are dropped on collapse anyway.
+// When `expected` is given, the type must also equal it.
+function isBareType(item: JSONSchema4, expected?: string) {
+  if (typeof item !== "object" || item === null) return false
+  const keys = Object.keys(item).filter(
+    (k) => item[k as keyof JSONSchema4] !== undefined && !k.startsWith("x-") && !k.startsWith("~"),
+  )
+  if (keys.length !== 1 || keys[0] !== "type") return false
+  if (Array.isArray(item.type)) return false
+  return expected === undefined || item.type === expected
 }
 
 function convertTypes(schema: SchemaType) {
@@ -284,39 +306,14 @@ function convertTypes(schema: SchemaType) {
     return schema
   }
 
+  // OpenAPI 3.1 accepts both single types and type arrays (including "null"),
+  // so there is nothing to rewrite — we only validate the values.
   validateType(schema.type)
 
-  if (Array.isArray(schema.type)) {
-    if (schema.type.includes("null")) {
-      schema.nullable = true
-    }
-    const typesWithoutNull = schema.type.filter((type) => type !== "null")
-    if (typesWithoutNull.length === 0) {
-      schema.type = undefined
-    } else if (typesWithoutNull.length === 1) {
-      schema.type = typesWithoutNull[0]
-    } else {
-      schema.type = undefined
-      schema.anyOf = typesWithoutNull.map((type) => ({ type }))
-    }
-  } else if (schema.type === "null") {
-    schema.type = undefined
-    schema.nullable = true
-  }
-
   return schema
 }
 
-// "patternProperties did not make it into OpenAPI v3.0"
-// https://github.com/OAI/OpenAPI-Specification/issues/687
-function convertPatternProperties(schema: SchemaType) {
-  schema["x-patternProperties"] = schema.patternProperties
-  schema.patternProperties = undefined
-  schema.additionalProperties ??= true
-  return schema
-}
-
-// keywords (or property names) that are not recognized within OAS3 are rewritten into extensions.
+// keywords (or property names) that are not recognized within OAS 3.1 are rewritten into extensions.
 function convertIllegalKeywordsAsExtensions(schema: SchemaType) {
   const keys = Object.keys(schema) as SchemaTypeKeys[]
 
@@ -328,63 +325,6 @@ function convertIllegalKeywordsAsExtensions(schema: SchemaType) {
     }
   }
 
-  return schema
-}
-
-function convertExamples(schema: SchemaType) {
-  if (schema.examples && Array.isArray(schema.examples)) {
-    schema.example = schema.examples[0]
-    schema.examples = undefined
-  }
-
-  return schema
-}
-
-function rewriteConst(schema: SchemaType) {
-  if (typeof schema.const !== "undefined") {
-    schema.enum = [schema.const]
-    schema.const = undefined
-  }
-  return schema
-}
-
-function rewriteIfThenElse(schema: SchemaType) {
-  if (typeof schema !== "object") {
-    return schema
-  }
-  /* @handrews https://github.com/OAI/OpenAPI-Specification/pull/1766#issuecomment-442652805
-  if and the *Of keywords
-
-  There is a really easy solution for implementations, which is that
-
-  if: X, then: Y, else: Z
-
-  is equivalent to
-
-  oneOf: [allOf: [X, Y], allOf: [not: X, Z]]
-  */
-  if ("if" in schema && schema.if && schema.then) {
-    schema.oneOf = [
-      { allOf: [schema.if, schema.then].filter(Boolean) },
-      { allOf: [{ not: schema.if }, schema.else].filter(Boolean) },
-    ]
-    schema.if = undefined
-    // biome-ignore lint/suspicious/noThenProperty: <explanation>
-    schema.then = undefined
-    schema.else = undefined
-  }
-  return schema
-}
-
-function rewriteExclusiveMinMax(schema: SchemaType) {
-  if (typeof schema.exclusiveMaximum === "number") {
-    schema.maximum = schema.exclusiveMaximum
-    ;(schema as JSONSchema4).exclusiveMaximum = true
-  }
-  if (typeof schema.exclusiveMinimum === "number") {
-    schema.minimum = schema.exclusiveMinimum
-    ;(schema as JSONSchema4).exclusiveMinimum = true
-  }
   return schema
 }
 

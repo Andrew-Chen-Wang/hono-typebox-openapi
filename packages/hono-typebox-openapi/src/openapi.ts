@@ -1,6 +1,6 @@
 import type { Context, Env, Hono, Input, Schema } from "hono"
 import type { BlankEnv, BlankInput, BlankSchema, MiddlewareHandler } from "hono/types"
-import type { OpenAPIV3 } from "openapi-types"
+import type { OpenAPIV3_1 } from "openapi-types"
 import { ALLOWED_METHODS, filterPaths, registerSchemaPath } from "./helper.js"
 import type {
   HandlerResponse,
@@ -22,7 +22,7 @@ const defaults: {
     excludeTags: [],
   },
   config: {
-    version: "3.0.3",
+    version: "3.1.0",
     components: {},
   },
 }
@@ -40,11 +40,11 @@ export function openAPISpecs<
   S extends Schema = BlankSchema,
 >(hono: Hono<E, S, P>, options?: OpenApiSpecsOptions): MiddlewareHandler<E, P, I> {
   const config: OpenAPIRouteHandlerConfig = {
-    version: "3.0.3",
+    version: "3.1.0",
     components: {},
   }
 
-  let specs: OpenAPIV3.Document
+  let specs: OpenAPIV3_1.Document
 
   return async (c) => {
     if (specs) return c.json(specs)
@@ -130,7 +130,7 @@ export async function generateSpecs<
         },
       },
     },
-  } satisfies OpenAPIV3.Document
+  } satisfies OpenAPIV3_1.Document
 }
 
 async function registerSchemas<
@@ -141,8 +141,8 @@ async function registerSchemas<
   hono: Hono<E, S, P>,
   options: OpenApiSpecsOptions,
   config: OpenAPIRouteHandlerConfig,
-): Promise<OpenAPIV3.PathsObject> {
-  const schema: OpenAPIV3.PathsObject = {}
+): Promise<OpenAPIV3_1.PathsObject> {
+  const schema: OpenAPIV3_1.PathsObject = {}
 
   for (const route of hono.routes) {
     // Finding routes with uniqueSymbol

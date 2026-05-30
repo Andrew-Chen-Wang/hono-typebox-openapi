@@ -1,4 +1,4 @@
-import type { OpenAPIV3 } from "openapi-types"
+import type { OpenAPIV3_1 } from "openapi-types"
 import type { DescribeRouteOptions, OpenAPIRoute, OpenApiSpecsOptions } from "./types"
 
 export const ALLOWED_METHODS = [
@@ -120,7 +120,7 @@ export function registerSchemaPath({
   data,
   schema,
 }: OpenAPIRoute & {
-  schema: Partial<OpenAPIV3.PathsObject>
+  schema: Partial<OpenAPIV3_1.PathsObject>
 }) {
   path = toOpenAPIPath(path)
   const method = _method.toLowerCase() as Lowercase<OpenAPIRoute["method"]>
@@ -148,12 +148,12 @@ export function registerSchemaPath({
         responses: {},
         operationId: generateOperationId(method, path),
         ...mergeRouteData(dataFromContext, schema[path]?.[method], data),
-      } satisfies OpenAPIV3.OperationObject,
+      } satisfies OpenAPIV3_1.OperationObject,
     }
   }
 }
 
-type Parameter = OpenAPIV3.ReferenceObject | OpenAPIV3.ParameterObject
+type Parameter = OpenAPIV3_1.ReferenceObject | OpenAPIV3_1.ParameterObject
 
 const paramKey = (param: Parameter) => ("$ref" in param ? param.$ref : `${param.in} ${param.name}`)
 
@@ -169,13 +169,13 @@ function mergeParameters(...params: (Parameter[] | undefined)[]): Parameter[] {
 }
 
 export function filterPaths(
-  paths: OpenAPIV3.PathsObject,
+  paths: OpenAPIV3_1.PathsObject,
   {
     excludeStaticFile = true,
     exclude = [],
   }: Pick<OpenApiSpecsOptions, "excludeStaticFile" | "exclude">,
 ) {
-  const newPaths: OpenAPIV3.PathsObject = {}
+  const newPaths: OpenAPIV3_1.PathsObject = {}
   const _exclude = Array.isArray(exclude) ? exclude : [exclude]
 
   for (const [key, value] of Object.entries(paths)) {
@@ -211,7 +211,7 @@ export function filterPaths(
             const paramName = param.slice(1, param.length - 1)
 
             const index = schema.parameters.findIndex(
-              (x: OpenAPIV3.ParameterObject) => x.in === "param" && x.name === paramName,
+              (x: OpenAPIV3_1.ParameterObject) => x.in === "param" && x.name === paramName,
             )
 
             if (index !== -1) schema.parameters[index].in = "path"

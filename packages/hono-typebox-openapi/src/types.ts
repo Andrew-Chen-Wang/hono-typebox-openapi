@@ -1,21 +1,21 @@
 import type { Context, Env, Input } from "hono"
 import type { BlankInput } from "hono/types"
 import type { ClientErrorStatusCode, ServerErrorStatusCode } from "hono/utils/http-status"
-import type { OpenAPIV3 } from "openapi-types"
+import type { OpenAPIV3_1 } from "openapi-types"
 import type { ALLOWED_METHODS } from "./helper"
 
 export type HasUndefined<T> = undefined extends T ? true : false
 export type PromiseOr<T> = T | Promise<T>
 
 export type OpenAPIRouteHandlerConfig = {
-  version: "3.0.0" | "3.0.1" | "3.0.2" | "3.0.3" | "3.1.0"
-  components: OpenAPIV3.ComponentsObject["schemas"]
+  version: "3.1.0" | "3.1.1"
+  components: OpenAPIV3_1.ComponentsObject["schemas"]
 } & { [key: string]: unknown }
 
 export type ResolverResult = {
   builder: (options?: OpenAPIRouteHandlerConfig) => PromiseOr<{
-    schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject
-    components?: OpenAPIV3.ComponentsObject["schemas"]
+    schema: OpenAPIV3_1.SchemaObject | OpenAPIV3_1.ReferenceObject
+    components?: OpenAPIV3_1.ComponentsObject["schemas"]
   }>
   validator: (values: unknown) => PromiseOr<void>
 }
@@ -25,13 +25,13 @@ export type HandlerResponse = {
     config: OpenAPIRouteHandlerConfig,
     defaultOptions?: DescribeRouteOptions,
   ) => PromiseOr<{
-    docs: OpenAPIV3.OperationObject
-    components?: OpenAPIV3.ComponentsObject["schemas"]
+    docs: OpenAPIV3_1.OperationObject
+    components?: OpenAPIV3_1.ComponentsObject["schemas"]
   }>
   metadata?: Record<string, unknown>
 }
 
-export type DescribeRouteOptions = Omit<OpenAPIV3.OperationObject, "responses" | "parameters"> & {
+export type DescribeRouteOptions = Omit<OpenAPIV3_1.OperationObject, "responses" | "parameters"> & {
   /**
    * Pass `true` to hide route from OpenAPI/swagger document
    */
@@ -56,22 +56,22 @@ export type DescribeRouteOptions = Omit<OpenAPIV3.OperationObject, "responses" |
    */
   responses?: {
     [key: string]:
-      | (OpenAPIV3.ResponseObject & {
+      | (OpenAPIV3_1.ResponseObject & {
           content?: {
-            [key: string]: Omit<OpenAPIV3.MediaTypeObject, "schema"> & {
-              schema?: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject | ResolverResult
+            [key: string]: Omit<OpenAPIV3_1.MediaTypeObject, "schema"> & {
+              schema?: OpenAPIV3_1.ReferenceObject | OpenAPIV3_1.SchemaObject | ResolverResult
             }
           }
         })
-      | OpenAPIV3.ReferenceObject
+      | OpenAPIV3_1.ReferenceObject
   }
 
   /**
    * Parameters of the request
    */
   parameters?: (
-    | OpenAPIV3.ParameterObject
-    | (OpenAPIV3.ParameterObject & {
+    | OpenAPIV3_1.ParameterObject
+    | (OpenAPIV3_1.ParameterObject & {
         schema: ResolverResult
       })
   )[]
@@ -80,7 +80,7 @@ export type DescribeRouteOptions = Omit<OpenAPIV3.OperationObject, "responses" |
 export interface OpenAPIRoute {
   path: string
   method: (typeof ALLOWED_METHODS)[number] | "ALL"
-  data?: DescribeRouteOptions | Pick<OpenAPIV3.OperationObject, "parameters" | "requestBody">
+  data?: DescribeRouteOptions | Pick<OpenAPIV3_1.OperationObject, "parameters" | "requestBody">
 }
 
 export type OpenApiSpecsOptions = {
@@ -90,7 +90,7 @@ export type OpenApiSpecsOptions = {
    * @see https://swagger.io/specification/v2/
    */
   documentation?: Omit<
-    Partial<OpenAPIV3.Document>,
+    Partial<OpenAPIV3_1.Document>,
     "x-express-openapi-additional-middleware" | "x-express-openapi-validation-strict"
   >
 
