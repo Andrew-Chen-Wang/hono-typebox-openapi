@@ -60,7 +60,7 @@ export function openAPISpecs<
  * @param hono Instance of Hono
  * @param options Options for generating OpenAPI specs
  * @param config Configuration for OpenAPI route handler
- * @param Context Route context for hiding routes
+ * @param c Context Route context for hiding routes
  * @returns OpenAPI specs
  */
 export async function generateSpecs<
@@ -74,17 +74,17 @@ export async function generateSpecs<
   config: OpenAPIRouteHandlerConfig = defaults.config,
   c?: Context<E, P, I>,
 ) {
-  const _options = { ...defaults.options, ...options }
+  const mergedOptions = { ...defaults.options, ...options }
   // Thread the target onto the config so it reaches each route's resolver/builder
   // (which calls `convert`) via `registerSchemas`.
-  const _config = {
+  const mergedConfig = {
     ...defaults.config,
     ...config,
-    target: _options.target,
+    target: mergedOptions.target,
   }
 
-  const documentation = _options.documentation ?? {}
-  const schema = await registerSchemas(hono, _options, _config)
+  const documentation = mergedOptions.documentation ?? {}
+  const schema = await registerSchemas(hono, mergedOptions, mergedConfig)
 
   // Hide routes
   for (const path in schema) {
@@ -114,26 +114,24 @@ export async function generateSpecs<
   }
 
   return {
-    openapi: _config.version,
-    ...{
-      ...documentation,
-      tags: documentation.tags?.filter((tag) => !_options.excludeTags?.includes(tag.name)),
-      info: {
-        title: "Hono Documentation",
-        description: "Development documentation",
-        version: "0.0.0",
-        ...documentation.info,
-      },
-      paths: {
-        ...filterPaths(schema, _options),
-        ...documentation.paths,
-      },
-      components: {
-        ...documentation.components,
-        schemas: {
-          ..._config.components,
-          ...documentation.components?.schemas,
-        },
+    openapi: mergedConfig.version,
+    ...documentation,
+    tags: documentation.tags?.filter((tag) => !mergedOptions.excludeTags?.includes(tag.name)),
+    info: {
+      title: "Hono Documentation",
+      description: "Development documentation",
+      version: "0.0.0",
+      ...documentation.info,
+    },
+    paths: {
+      ...filterPaths(schema, mergedOptions),
+      ...documentation.paths,
+    },
+    components: {
+      ...documentation.components,
+      schemas: {
+        ...mergedConfig.components,
+        ...documentation.components?.schemas,
       },
     },
   } satisfies OpenAPIV3_1.Document
@@ -187,7 +185,7 @@ async function registerSchemas<
 
     config.components = {
       ...config.components,
-      ...(components ?? {}),
+      ...components,
     }
 
     registerSchemaPath({

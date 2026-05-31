@@ -43,3 +43,6 @@ lefthook-local.yml
 
 # Claude Code session state (never commit)
 .claude/
+
+# npm auth token (never commit)
+.npmrc

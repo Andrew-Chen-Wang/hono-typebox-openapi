@@ -27,7 +27,7 @@ const app = new Hono().basePath("/api")
 app.get("/openapi", openAPISpecs(app, spec))
 app.get(
   "/docs",
-  Scalar((c) => {
+  Scalar(() => {
     return {
       theme: "saturn",
       url: "/api/openapi",
@@ -56,8 +56,8 @@ export type AppType = typeof routes
 const DEFAULT_PORT = 34100
 
 if (process.argv.includes("--openapi")) {
-  const specs = generateSpecs(app, spec).then((specs) => {
-    console.log(JSON.stringify(specs, null, 2))
+  void generateSpecs(app, spec).then((generated) => {
+    console.log(JSON.stringify(generated, null, 2))
   })
 } else {
   serve({

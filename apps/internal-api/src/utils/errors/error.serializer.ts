@@ -39,7 +39,6 @@ export function createErrorResponse(
     innererror?: {
       code: string
       innererror?: ErrorDetail["innererror"]
-      // biome-ignore lint/suspicious/noExplicitAny: anything other than any might not work here
       [key: string]: any
     }
   },
@@ -68,7 +67,6 @@ export function createErrorObject(
     innererror?: {
       code: string
       innererror?: ErrorDetail["innererror"]
-      // biome-ignore lint/suspicious/noExplicitAny: anything other than any might not work here
       [key: string]: any
     }
   },

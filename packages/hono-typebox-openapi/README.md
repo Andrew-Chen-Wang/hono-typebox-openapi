@@ -109,8 +109,8 @@ app.get(
         },
       ],
     },
-  })
-);
+  }),
+)
 ```
 
 Now, you can access the OpenAPI specification by visiting `http://localhost:3000/openapi`, and you can use this specification to generate client libraries, documentation, and more. Some tools that I used to generate documentation are -
@@ -128,8 +128,8 @@ app.get(
   Scalar({
     theme: "saturn",
     url: "/openapi",
-  })
-);
+  }),
+)
 ```
 
 And that's it! You have successfully generated the OpenAPI specification for your Hono API.
@@ -171,8 +171,8 @@ app.get(
         },
       ],
     },
-  })
-);
+  }),
+)
 ```
 
 #### Conditionaly Hiding Routes
@@ -187,9 +187,9 @@ app.get(
     hide: process.env.NODE_ENV === "production",
   }),
   (c) => {
-    return c.text("Private Route");
-  }
-);
+    return c.text("Private Route")
+  },
+)
 ```
 
 #### Validating Responses
@@ -207,9 +207,9 @@ app.get(
     validateResponse: true,
   }),
   (c) => {
-    return c.json({ message: "This response will be validated" });
-  }
-);
+    return c.json({ message: "This response will be validated" })
+  },
+)
 ```
 
 #### Persisting OpenAPI Spec to a file
@@ -217,21 +217,18 @@ app.get(
 You can save the spec to a file for cache or any other external use.
 
 ```ts
-import fs from 'node:fs';
-import { openAPISpecs, generateSpecs } from 'hono-typebox-openapi';
+import fs from "node:fs"
+import { openAPISpecs, generateSpecs } from "hono-typebox-openapi"
 
-const options = {/* ... */};
-const app = new Hono()
-  .get(
-    "/openapi",
-    openAPISpecs(app, options),
-  );
+const options = {
+  /* ... */
+}
+const app = new Hono().get("/openapi", openAPISpecs(app, options))
 
-generateSpecs(app, options)
-  .then(spec => {
-    const pathToSpec = "openapi.json"
-    fs.writeFileSync(pathToSpec, JSON.stringify(spec, null, 2));
-  })
+generateSpecs(app, options).then((spec) => {
+  const pathToSpec = "openapi.json"
+  fs.writeFileSync(pathToSpec, JSON.stringify(spec, null, 2))
+})
 ```
 
 #### Targeting a specific client generator
@@ -261,16 +258,16 @@ inside an `anyOf`/`oneOf` (it **silently drops the entire property**), and it ex
 `const` string unions into hundreds of single-case enums. This target rewrites the document
 so those shapes generate clean Swift:
 
-| Nullable shape | default | `"swift-openapi-generator"` |
-| --- | --- | --- |
-| object | `anyOf: [{ type: "object", … }, { type: "null" }]` | `{ type: ["object", "null"], … }` |
-| array | `anyOf: [{ type: "array", … }, { type: "null" }]` | `{ type: ["array", "null"], … }` |
-| `$ref` | `anyOf: [{ $ref }, { type: "null" }]` | `{ $ref }` (nullable via being optional) |
-| scalar | `{ type: ["string", "null"] }` | `{ type: ["string", "null"] }` (same) |
-| single other member (nested union, `const`/`enum`, …) | `anyOf: [<member>, { type: "null" }]` | `<member>` (inlined) |
-| several members + null | `anyOf: [a, b, { type: "null" }]` | `anyOf: [a, b]` (null dropped) |
-| standalone `{ type: "null" }` | `{ type: "null" }` | `{}` (open value, optional) |
-| large `const`-string union (≥ 20 members) | `anyOf: [{const:…} × N]` | `{ type: "string" }` |
+| Nullable shape                                        | default                                            | `"swift-openapi-generator"`              |
+| ----------------------------------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| object                                                | `anyOf: [{ type: "object", … }, { type: "null" }]` | `{ type: ["object", "null"], … }`        |
+| array                                                 | `anyOf: [{ type: "array", … }, { type: "null" }]`  | `{ type: ["array", "null"], … }`         |
+| `$ref`                                                | `anyOf: [{ $ref }, { type: "null" }]`              | `{ $ref }` (nullable via being optional) |
+| scalar                                                | `{ type: ["string", "null"] }`                     | `{ type: ["string", "null"] }` (same)    |
+| single other member (nested union, `const`/`enum`, …) | `anyOf: [<member>, { type: "null" }]`              | `<member>` (inlined)                     |
+| several members + null                                | `anyOf: [a, b, { type: "null" }]`                  | `anyOf: [a, b]` (null dropped)           |
+| standalone `{ type: "null" }`                         | `{ type: "null" }`                                 | `{}` (open value, optional)              |
+| large `const`-string union (≥ 20 members)             | `anyOf: [{const:…} × N]`                           | `{ type: "string" }`                     |
 
 The standalone `{ type: "null" }` member is eliminated from **every** union, and the
 property is removed from its object's `required` array so it generates a Swift optional. A

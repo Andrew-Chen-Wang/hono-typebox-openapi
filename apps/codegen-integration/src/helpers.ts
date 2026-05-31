@@ -26,7 +26,9 @@ export const SOURCES = {
  */
 export async function fetchSpec(url: string, timeoutMs = 2000): Promise<string | null> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const timer = setTimeout(() => {
+    controller.abort()
+  }, timeoutMs)
   try {
     const res = await fetch(url, { signal: controller.signal, redirect: "manual" })
     if (!res.ok) return null

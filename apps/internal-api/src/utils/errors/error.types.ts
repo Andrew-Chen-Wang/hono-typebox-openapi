@@ -10,7 +10,6 @@ export type ErrorDetail = {
   innererror?: {
     code: string
     innererror?: ErrorDetail["innererror"]
-    // biome-ignore lint/suspicious/noExplicitAny: anything other than any might not work here
     [key: string]: any
   }
 }

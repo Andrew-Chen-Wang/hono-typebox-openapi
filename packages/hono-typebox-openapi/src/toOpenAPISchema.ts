@@ -27,7 +27,7 @@ export type SchemaTypeKeys = keyof SchemaType
 // OpenAPI 3.1 Schema Objects are a superset of JSON Schema 2020-12, so the
 // allowed keywords are the 2020-12 vocabulary plus the OAS-specific annotations.
 // Anything outside this list is rewritten into an `x-` extension.
-const allowedKeywords = [
+const allowedKeywords = new Set([
   "$ref",
   "$defs",
   "definitions",
@@ -90,7 +90,7 @@ const allowedKeywords = [
   "discriminator",
   "externalDocs",
   "xml",
-]
+])
 
 class InvalidTypeError extends Error {
   constructor(message: string) {
@@ -120,7 +120,6 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
         definitions: schema.definitions || [],
         ...def,
         $schema: schema.$schema,
-        // biome-ignore lint/suspicious/noExplicitAny: <explanation>
       } as any,
       {
         dereference: true,
@@ -186,30 +185,30 @@ function stripIllegalKeywords(schema: SchemaType) {
 // enables the swift-openapi-generator normalization passes (see `collapseNullable` /
 // `unrequireNullableProps`).
 const makeConvertSchema = (swiftGenerator: boolean) => (schema?: SchemaType) => {
-  let _schema = schema
+  let draft = schema
 
-  if (!_schema) {
-    return _schema
+  if (!draft) {
+    return draft
   }
 
-  _schema = stripIllegalKeywords(_schema)
+  draft = stripIllegalKeywords(draft)
   // Runs before child unions are collapsed, while each property still carries its raw
   // `anyOf:[...,{type:null}]`, so it can detect which properties are nullable.
   if (swiftGenerator) {
-    _schema = unrequireNullableProps(_schema)
-    _schema = collapseLargeConstUnion(_schema)
-    _schema = openTypeNullSchema(_schema)
+    draft = unrequireNullableProps(draft)
+    draft = collapseLargeConstUnion(draft)
+    draft = openTypeNullSchema(draft)
   }
-  _schema = convertTypes(_schema)
-  _schema = collapseNullable(_schema, swiftGenerator)
+  draft = convertTypes(draft)
+  draft = collapseNullable(draft, swiftGenerator)
 
-  if (_schema.type === "array" && typeof _schema.items === "undefined") {
-    _schema.items = {}
+  if (draft.type === "array" && typeof draft.items === "undefined") {
+    draft.items = {}
   }
 
   // should be called last
-  _schema = convertIllegalKeywordsAsExtensions(_schema)
-  return _schema
+  draft = convertIllegalKeywordsAsExtensions(draft)
+  return draft
 }
 
 const validTypes = new Set(["null", "boolean", "object", "array", "number", "string", "integer"])
@@ -227,9 +226,8 @@ function validateType(type: unknown) {
   }
   const types = Array.isArray(type) ? type : [type]
 
-  for (const type of types) {
-    if (type && !validTypes.has(type))
-      throw new InvalidTypeError(`Type "${type}" is not a valid type`)
+  for (const t of types) {
+    if (t && !validTypes.has(t)) throw new InvalidTypeError(`Type "${t}" is not a valid type`)
   }
 }
 
@@ -360,9 +358,7 @@ const LARGE_CONST_UNION_MIN = 20
 // True for a `{ type: "string", const: <value> }` member (the shape TypeBox emits for
 // each literal in a large string union, e.g. every country / timezone name).
 function isConstString(item: JSONSchema4) {
-  return (
-    typeof item === "object" && item !== null && item.type === "string" && item.const !== undefined
-  )
+  return typeof item === "object" && item?.type === "string" && item.const !== undefined
 }
 
 // Collapse a large `anyOf`/`oneOf` of `{type:"string", const:…}` members (>= 20, e.g.
@@ -440,7 +436,7 @@ function isMergeableArray(item: JSONSchema4) {
 // a type array, so a nullable ref is rendered as the bare ref (the `{type:null}` branch
 // is dropped) and made optional via `unrequireNullableProps`.
 function isBareRef(item: JSONSchema4) {
-  if (typeof item !== "object" || item === null || !item.$ref) return false
+  if (typeof item !== "object" || item?.$ref) return false
   const keys = Object.keys(item).filter(
     (k) => item[k as keyof JSONSchema4] !== undefined && !k.startsWith("x-") && !k.startsWith("~"),
   )
@@ -500,7 +496,7 @@ function unrequireNullableProps(schema: SchemaType) {
     return schema
   }
   const filtered = required.filter(
-    (name) => !isNullableUnion((properties as Record<string, unknown>)[name as string]),
+    (name) => !isNullableUnion((properties as Record<string, unknown>)[name]),
   )
   schema.required = (filtered.length === 0 ? undefined : filtered) as SchemaType["required"]
   return schema
@@ -526,7 +522,7 @@ function convertIllegalKeywordsAsExtensions(schema: SchemaType) {
   const keys = Object.keys(schema) as SchemaTypeKeys[]
 
   for (const keyword of keys) {
-    if (!keyword.startsWith(oasExtensionPrefix) && !allowedKeywords.includes(keyword)) {
+    if (!keyword.startsWith(oasExtensionPrefix) && !allowedKeywords.has(keyword)) {
       const key = `${oasExtensionPrefix}${keyword}` as keyof SchemaType
       schema[key] = schema[keyword]
       schema[keyword] = undefined

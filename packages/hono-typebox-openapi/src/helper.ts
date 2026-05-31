@@ -41,7 +41,6 @@ export const generateOperationId = (method: string, paths: string) => {
   const key = `${method}:${paths}`
 
   if (generateOperationIdCache.has(key)) {
-    // biome-ignore lint/style/noNonNullAssertion: from the original library
     return generateOperationIdCache.get(key)!
   }
 
@@ -86,7 +85,6 @@ function mergeRouteData(...data: OpenAPIRoute["data"][]) {
     }
 
     return {
-      // biome-ignore lint/performance/noAccumulatingSpread: <explanation>
       ...acc,
       ...route,
       tags,
@@ -105,7 +103,7 @@ function getPathContext(path: string) {
   let context: OpenAPIRoute["data"] = {}
 
   for (const key of keys) {
-    if (path.match(key)) {
+    if (RegExp(key).exec(path)) {
       const data = schemaPathContext.get(key) ?? {}
       context = mergeRouteData(context, data)
     }
@@ -158,9 +156,9 @@ type Parameter = OpenAPIV3_1.ReferenceObject | OpenAPIV3_1.ParameterObject
 const paramKey = (param: Parameter) => ("$ref" in param ? param.$ref : `${param.in} ${param.name}`)
 
 function mergeParameters(...params: (Parameter[] | undefined)[]): Parameter[] {
-  const _params = params.flatMap((x) => x ?? [])
+  const flatParams = params.flatMap((x) => x ?? [])
 
-  const merged = _params.reduce((acc, param) => {
+  const merged = flatParams.reduce((acc, param) => {
     acc.set(paramKey(param), param)
     return acc
   }, new Map<string, Parameter>())
@@ -176,11 +174,11 @@ export function filterPaths(
   }: Pick<OpenApiSpecsOptions, "excludeStaticFile" | "exclude">,
 ) {
   const newPaths: OpenAPIV3_1.PathsObject = {}
-  const _exclude = Array.isArray(exclude) ? exclude : [exclude]
+  const excludeList = Array.isArray(exclude) ? exclude : [exclude]
 
   for (const [key, value] of Object.entries(paths)) {
     if (
-      !_exclude.some((x) => {
+      !excludeList.some((x) => {
         if (typeof x === "string") return key === x
 
         return x.test(key)

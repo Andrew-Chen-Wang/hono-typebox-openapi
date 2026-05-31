@@ -6,21 +6,8 @@ on:
   pull_request:
 
 jobs:
-  lint-biome:
-    name: (Biome) Lint and Format Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v5
-      - name: Setup Biome
-        uses: biomejs/setup-biome@v2
-      - name: Check formatting with Biome
-        # Do not use --changed. Previously, if we didn't lint everything,
-        # some bugs would slip through due to sheer nature of git diff.
-        run: biome ci --no-errors-on-unmatched .
-
   lint:
-    name: (eslint) TypeScript Lint Check
+    name: (oxc) Lint and Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -28,15 +15,19 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '24.7.0'
-          cache: 'npm'
+          node-version: "24.7.0"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Check typescript-eslint
-        continue-on-error: true
-        run: npx eslint --config .config/eslint.config.mjs .
+      # Do not scope to changed files. Previously, if we didn't lint everything,
+      # some bugs would slip through due to the sheer nature of git diff.
+      - name: Check formatting (oxfmt)
+        run: npm run format:check
+
+      - name: Lint (oxlint, type-aware + type-check)
+        run: npm run lint
 
   build:
     name: Website Build and Test Full Repo
@@ -46,8 +37,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '24.7.0'
-          cache: 'npm'
+          node-version: "24.7.0"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -66,22 +57,22 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '24.7.0'
-          cache: 'npm'
+          node-version: "24.7.0"
+          cache: "npm"
       # JDK 17 (LTS): openapi-generator's kotlin template emits a Gradle 7.x wrapper that does
       # not support very new JDKs. setup-java sets JAVA_HOME, which the ktor test uses for the
       # Gradle build (see apps/codegen-integration/src/ktor.test.ts compatibleJavaHome()).
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: "temurin"
+          java-version: "17"
       - name: Setup Swift
         uses: swift-actions/setup-swift@v2
         with:
           # >= 6.1: swift-openapi-runtime 1.12.0 declares swift-tools-version 6.1, so an older
           # toolchain cannot even read its manifest ("incompatible tools version").
-          swift-version: '6.1'
+          swift-version: "6.1"
 
       - name: Install dependencies
         run: npm ci

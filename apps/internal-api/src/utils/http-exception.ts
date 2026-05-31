@@ -16,7 +16,6 @@ export function throwHTTPException(
     innererror?: {
       code: string
       innererror?: ErrorDetail["innererror"]
-      // biome-ignore lint/suspicious/noExplicitAny: anything other than any might not work here
       [key: string]: any
     }
   },
@@ -46,7 +45,6 @@ export function throwError(
     innererror?: {
       code: string
       innererror?: ErrorDetail["innererror"]
-      // biome-ignore lint/suspicious/noExplicitAny: anything other than any might not work here
       [key: string]: any
     }
   },

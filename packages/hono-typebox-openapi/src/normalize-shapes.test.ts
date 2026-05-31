@@ -7,11 +7,7 @@ import convert from "./toOpenAPISchema"
 // express through TypeBox and the point is to lock the wire-level transform.
 // `swiftGenerator` selects the `target: "swift-openapi-generator"` normalization.
 type SchemaRecord = Record<string, unknown>
-const run = async (
-  // biome-ignore lint/suspicious/noExplicitAny: raw JSON schema fixtures
-  schema: any,
-  swiftGenerator: boolean,
-): Promise<SchemaRecord> =>
+const run = async (schema: any, swiftGenerator: boolean): Promise<SchemaRecord> =>
   (await convert(
     structuredClone(schema),
     swiftGenerator ? { target: "swift-openapi-generator" } : undefined,

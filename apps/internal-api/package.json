@@ -1,30 +1,30 @@
 {
   "name": "@api/internal",
   "version": "1.0.0",
+  "private": true,
   "description": "",
+  "keywords": [],
+  "license": "MIT",
+  "author": "",
   "bin": "src/index.ts",
   "type": "module",
-  "scripts": {
-    "generate-specs": "tsx src/index.ts --openapi > openapi.json",
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
-  },
   "exports": [
     {
       "import": "./src/index.ts",
       "require": "./src/index.ts"
     }
   ],
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
-  "private": true,
+  "scripts": {
+    "generate-specs": "tsx src/index.ts --openapi > openapi.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
+  },
   "dependencies": {
+    "@hono/node-server": "^1.19.9",
     "@scalar/hono-api-reference": "^0.9.32",
-    "typebox": "^1.0.77",
     "hono": "^4.11.4",
     "hono-typebox-openapi": "*",
-    "@hono/node-server": "^1.19.9"
+    "typebox": "^1.0.77"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "0.94.5"

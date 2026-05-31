@@ -1,0 +1,18 @@
+# oxfmt reads .prettierignore (and .gitignore) for ignore patterns.
+# Keep this in sync with ignorePatterns in .oxlintrc.json.
+
+# Dev-only scratch area, not part of the published packages
+private_notes/
+
+# Build outputs
+**/dist/
+**/build/
+**/.build/
+**/.gradle/
+.next/
+
+# Generated artifacts
+**/openapi.json
+
+# Lockfiles
+package-lock.json

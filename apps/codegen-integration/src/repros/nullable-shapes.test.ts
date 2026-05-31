@@ -30,9 +30,11 @@ function describeRouteFor(schema: TSchema) {
 async function swiftSchema(schema: TSchema) {
   const app = new Hono().get("/probe", describeRouteFor(schema), (c) => c.json({}))
   const spec = await generateSpecs(app, { target: "swift-openapi-generator" })
-  // biome-ignore lint/suspicious/noExplicitAny: digging into the generated spec
   return (spec as any).paths["/probe"].get.responses["200"].content["application/json"].schema
 }
+
+const isNullMember = (m: unknown) =>
+  !!m && typeof m === "object" && (m as Record<string, unknown>).type === "null"
 
 // Recursively detect any shape swift-openapi-generator would skip.
 function swiftIncompatibleNulls(node: unknown, path = "$"): string[] {
@@ -43,8 +45,6 @@ function swiftIncompatibleNulls(node: unknown, path = "$"): string[] {
     return bad
   }
   const obj = node as Record<string, unknown>
-  const isNullMember = (m: unknown) =>
-    !!m && typeof m === "object" && (m as Record<string, unknown>).type === "null"
   if (obj.type === "null") bad.push(`${path}: standalone {type:"null"}`)
   for (const key of ["anyOf", "oneOf"] as const) {
     const arr = obj[key]
@@ -102,7 +102,6 @@ describe("swift target eliminates every swift-incompatible null shape", () => {
       (c) => c.json({}),
     )
     const spec = await generateSpecs(app, { target: "swift-openapi-generator" })
-    // biome-ignore lint/suspicious/noExplicitAny: digging into the generated spec
     const s = (spec as any).paths["/probe"].get.responses["200"].content["application/json"].schema
     expect(s.properties.ref).toEqual({ $ref: "#/components/schemas/Sub" })
     expect(s.required ?? []).not.toContain("ref")
@@ -116,7 +115,6 @@ describe("default target keeps idiomatic anyOf null (unchanged for web clients)"
       c.json({}),
     )
     const spec = await generateSpecs(app)
-    // biome-ignore lint/suspicious/noExplicitAny: digging into the generated spec
     const s = (spec as any).paths["/probe"].get.responses["200"].content["application/json"].schema
     expect(s.properties.f.anyOf).toContainEqual({ type: "null" })
     expect(s.required).toContain("f")

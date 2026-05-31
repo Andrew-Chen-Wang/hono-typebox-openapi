@@ -119,7 +119,7 @@ describe("Error utilities", () => {
         expect.fail("Should have thrown an exception")
       } catch (error) {
         if (!(error instanceof HTTPException)) {
-          throw new Error("Expected HTTPException")
+          throw new Error("Expected HTTPException", { cause: error })
         }
         expect(error.status).toBe(400)
         const message = JSON.parse(error.message) as ParsedErrorResponse
@@ -134,7 +134,7 @@ describe("Error utilities", () => {
         expect.fail("Should have thrown an exception")
       } catch (error) {
         if (!(error instanceof HTTPException)) {
-          throw new Error("Expected HTTPException")
+          throw new Error("Expected HTTPException", { cause: error })
         }
         expect(error.status).toBe(403)
         const message = JSON.parse(error.message) as ParsedErrorResponse
@@ -152,7 +152,7 @@ describe("Error utilities", () => {
         expect.fail("Should have thrown an exception")
       } catch (error) {
         if (!(error instanceof HTTPException)) {
-          throw new Error("Expected HTTPException")
+          throw new Error("Expected HTTPException", { cause: error })
         }
         expect(error.status).toBe(404)
         const message = JSON.parse(error.message) as ParsedErrorResponse

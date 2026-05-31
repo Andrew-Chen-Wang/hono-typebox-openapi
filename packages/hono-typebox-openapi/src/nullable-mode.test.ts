@@ -30,7 +30,6 @@ function makeApp() {
 }
 
 // Pull the response schema object out of the generated spec.
-// biome-ignore lint/suspicious/noExplicitAny: test helper digging into the spec
 function responseSchema(spec: any) {
   return spec.paths["/user"].get.responses["200"].content["application/json"].schema
 }

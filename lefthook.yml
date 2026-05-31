@@ -4,12 +4,11 @@
 pre-commit:
   parallel: false
   commands:
-    eslint:
-      glob: "*.{js,ts,jsx,tsx}"
-      run: npx eslint --config .config/eslint.config.mjs --fix {staged_files}
+    oxfmt:
+      glob: "*.{js,ts,cjs,mjs,jsx,tsx,json,jsonc}"
+      run: npx oxfmt {staged_files}
       stage_fixed: true
-      skip: true
-    biome:
-      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}"
-      run: npx @biomejs/biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+    oxlint:
+      glob: "*.{js,ts,cjs,mjs,jsx,tsx}"
+      run: npx oxlint --type-aware --type-check --fix {staged_files}
       stage_fixed: true
