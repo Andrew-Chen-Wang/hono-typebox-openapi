@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  lint:
-    name: (oxc) Lint and Format Check
+  format:
+    name: (oxc) Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -21,13 +21,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Do not scope to changed files. Previously, if we didn't lint everything,
-      # some bugs would slip through due to the sheer nature of git diff.
       - name: Check formatting (oxfmt)
         run: npm run format:check
-
-      - name: Lint (oxlint, type-aware + type-check)
-        run: npm run lint
 
   build:
     name: Website Build and Test Full Repo
@@ -45,6 +40,13 @@ jobs:
       - name: Build
         working-directory: packages/hono-typebox-openapi
         run: npm run build
+      # Type-aware lint resolves `hono-typebox-openapi` via its dist/ type
+      # declarations, so it must run after the build above.
+      #
+      # Do not scope to changed files. Previously, if we didn't lint everything,
+      # some bugs would slip through due to the sheer nature of git diff.
+      - name: Lint (oxlint, type-aware + type-check)
+        run: npm run lint
       - name: Test
         run: npm run test
 

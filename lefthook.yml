@@ -6,9 +6,7 @@ pre-commit:
   commands:
     oxfmt:
       glob: "*.{js,ts,cjs,mjs,jsx,tsx,json,jsonc}"
-      run: npx oxfmt {staged_files}
-      stage_fixed: true
+      run: npx oxfmt --check {staged_files}
     oxlint:
       glob: "*.{js,ts,cjs,mjs,jsx,tsx}"
-      run: npx oxlint --type-aware --type-check --fix {staged_files}
-      stage_fixed: true
+      run: npx oxlint --type-aware --type-check {staged_files}
