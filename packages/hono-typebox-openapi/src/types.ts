@@ -11,7 +11,17 @@ export type OpenAPIRouteHandlerConfig = {
   version: "3.1.0" | "3.1.1"
   components: OpenAPIV3_1.ComponentsObject["schemas"]
   target?: OpenApiTarget
+  /** Schema-local JSON pointers un-required by the target normalization. See {@link UnrequiredNullableReport}. */
+  onUnrequiredNullable?: (pointers: string[]) => void
 } & { [key: string]: unknown }
+
+/** One operation's worth of properties the target normalization removed from a `required` array. */
+export type UnrequiredNullableReport = {
+  method: string
+  path: string
+  /** Schema-local JSON pointers, e.g. `/properties/matchData`. */
+  pointers: string[]
+}
 
 /**
  * The downstream OpenAPI consumer to tailor the generated document for. When set, the
@@ -143,11 +153,26 @@ export type OpenApiSpecsOptions = {
    * which cannot consume a standalone `{ type: "null" }` member inside `anyOf`/`oneOf` (it
    * silently DROPS the property) and explodes large `const` string unions into hundreds of
    * single-case enums. In this mode nullables fold into `type: [..., "null"]` (or a bare
-   * `$ref`), standalone null becomes an open optional, nullable props are dropped from
-   * `required`, and large `const` unions collapse to `{ type: "string" }`. Note: nullable
-   * properties become optional (`T?`) in generated clients under this target.
+   * `$ref`), standalone null becomes an open optional, and large `const` unions collapse to
+   * `{ type: "string" }`. A nullable property is dropped from `required` only when
+   * normalization could not preserve its `null` branch — see {@link onUnrequiredNullable}.
    */
   target?: OpenApiTarget
+
+  /**
+   * Called once per operation whose schemas had properties removed from a `required` array by
+   * the {@link target} normalization.
+   *
+   * Those shapes — a bare `$ref`, a `const`/`enum` or nested union, a multi-member union, a
+   * standalone `{ type: "null" }` — cannot carry a `null` branch through normalization, so
+   * absence from `required` is the only nullability signal the generator has left. The cost is
+   * that the document advertises "may be omitted" while the server, validating against the
+   * untransformed TypeBox schema, still requires the field. Wrap each reported property in
+   * `Type.Optional(...)` server-side to make the advertised contract honest.
+   *
+   * Silent by default.
+   */
+  onUnrequiredNullable?: (report: UnrequiredNullableReport) => void
 
   /**
    * Default options for `describeRoute` method

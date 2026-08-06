@@ -178,8 +178,15 @@ async function registerSchemas<
     const defaultOptionsForThisMethod =
       options.defaultOptions?.[route.method as OpenAPIRoute["method"]]
 
+    // `convert` only knows the schema it was handed, so attribute its report to this route here,
+    // where the method and path are in scope.
+    const onUnrequiredNullable = options.onUnrequiredNullable
+      ? (pointers: string[]) =>
+          options.onUnrequiredNullable?.({ method: route.method, path: route.path, pointers })
+      : undefined
+
     const { docs, components } = await resolver(
-      { ...config, ...metadata },
+      { ...config, ...metadata, onUnrequiredNullable },
       defaultOptionsForThisMethod,
     )
 

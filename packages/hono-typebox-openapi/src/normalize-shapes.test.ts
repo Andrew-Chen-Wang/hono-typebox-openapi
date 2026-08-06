@@ -76,7 +76,9 @@ describe('target: "swift-openapi-generator" normalization (real-world spec shape
     ])
   })
 
-  it("opens a standalone {type:null} to {} and drops it from required", async () => {
+  // The empty schema still accepts `null`, so the property keeps its `required` entry — the
+  // server requires the field to be present, and the document must say the same.
+  it("opens a standalone {type:null} to {} and keeps it required", async () => {
     const out = await run(
       {
         type: "object",
@@ -85,7 +87,7 @@ describe('target: "swift-openapi-generator" normalization (real-world spec shape
       },
       true,
     )
-    expect(out.required).toEqual(["id"])
+    expect(out.required).toEqual(["approved", "id"])
     expect((out.properties as Record<string, unknown>).approved).toEqual({})
   })
 

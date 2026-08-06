@@ -50,8 +50,10 @@ describe("target end-to-end via generateSpecs", () => {
     expect(s.properties.jobDetails.type).toEqual(["object", "null"])
     expect(s.properties.tags.type).toEqual(["array", "null"])
     expect(s.properties.matchData).toEqual({ $ref: "#/components/schemas/Foo" })
-    // nullable props dropped from required (id stays)
-    expect(s.required).toEqual(["id"])
+    // Only `matchData` leaves `required`: it collapses to a bare `$ref`, which cannot express
+    // null, so absence is its only nullability signal. `jobDetails` and `tags` still say "null"
+    // in their type arrays, so they stay required — as the server enforces.
+    expect(s.required).toEqual(["id", "jobDetails", "tags"])
     // No standalone {"type":"null"} member anywhere (the shape swift drops). Note `"null"`
     // legitimately appears inside type arrays like ["object","null"] — that is the fix.
     expect(JSON.stringify(s)).not.toContain('{"type":"null"}')
@@ -64,7 +66,7 @@ describe("target end-to-end via generateSpecs", () => {
     const app = makeApp()
     // swift target first (the order that previously contaminated the cached schema)
     const ios = responseSchema(await generateSpecs(app, { target: "swift-openapi-generator" }))
-    expect(ios.required).toEqual(["id"])
+    expect(ios.required).toEqual(["id", "jobDetails", "tags"])
     // default afterwards must still be the untouched anyOf form
     const web = responseSchema(await generateSpecs(app))
     expect(web.properties.jobDetails.anyOf).toContainEqual({ type: "null" })

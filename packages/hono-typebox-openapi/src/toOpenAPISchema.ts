@@ -17,10 +17,25 @@ export interface Options {
    * Unset = idiomatic OpenAPI 3.1 (default). See {@link OpenApiTarget}.
    */
   target?: OpenApiTarget
+  /**
+   * Called with the schema-local JSON pointers of every property this conversion removed from a
+   * `required` array (e.g. `/properties/matchData`), when there are any.
+   *
+   * Some nullable shapes cannot survive normalization with their `null` branch intact — a bare
+   * `$ref`, a `const`/`enum` union, a multi-member union. For those, un-requiring the property is
+   * the only remaining way to signal nullability to the target generator, so the emitted document
+   * says "may be omitted" while the server, validating against the untransformed TypeBox schema,
+   * still requires it. Each reported field needs a matching `Type.Optional(...)` server-side for
+   * the advertised contract to be honest.
+   */
+  onUnrequiredNullable?: (pointers: string[]) => void
 }
 
 export type OpenApiTarget = "swift-openapi-generator"
-type ExtendedJSONSchema = addPrefixToObject & JSONSchema
+// `prefixItems` is JSON Schema 2020-12 (and so OpenAPI 3.1), but `@types/json-schema` only models
+// draft-04/06/07, where a tuple is an array-form `items`. Declare it so the tuple lift is typed.
+type Draft2020Keywords = { prefixItems?: JSONSchema[] }
+type ExtendedJSONSchema = addPrefixToObject & JSONSchema & Draft2020Keywords
 export type SchemaType = ExtendedJSONSchema
 export type SchemaTypeKeys = keyof SchemaType
 
@@ -102,10 +117,29 @@ class InvalidTypeError extends Error {
 
 const oasExtensionPrefix = "x-"
 
+// DRAFT_07 is the newest vocabulary json-schema-walker@2 ships (it is literally `{...DRAFT_06}`),
+// and it has no `prefixItems` handler. Once `liftTupleToPrefixItems` renames a tuple's array-form
+// `items`, the walker would stop there and never visit the tuple's members — no nullable collapse,
+// no extension rewriting. `allOf`'s processor is `processArrayOfSchemas`, which is exactly the
+// right shape for `prefixItems`, and it is already bound to the walker instance.
+const tupleAwareVocabulary = <T extends JSONSchema>(walker: Walker<T>) => ({
+  ...walker.vocabularies.DRAFT_07,
+  prefixItems: walker.vocabularies.DRAFT_07.allOf,
+})
+
+// Marks a schema whose `null` branch was erased during normalization (see `unrequireDroppedNulls`).
+// A symbol key is invisible to `Object.keys` and `JSON.stringify`, so it never reaches
+// `convertIllegalKeywordsAsExtensions` or the emitted document.
+const NULL_DROPPED = Symbol("nullDropped")
+
 const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
   def: JSONSchema7Definition | JSONSchema6Definition | JSONSchema4,
   schema: T,
   swiftGenerator: boolean,
+  // Accumulates the JSON pointers reported through `Options.onUnrequiredNullable`, prefixed with
+  // this definition's location so the caller sees document-relative paths.
+  unrequired: string[] = [],
+  pointerPrefix = "",
 ) => {
   if (typeof def !== "object") {
     return def
@@ -131,7 +165,10 @@ const handleDefinition = async <T extends JSONSchema4 = JSONSchema4>(
         },
       },
     )
-    await walker.walk(makeConvertSchema(swiftGenerator), walker.vocabularies.DRAFT_07)
+    await walker.walk(makeConvertSchema(swiftGenerator), tupleAwareVocabulary(walker))
+    if (swiftGenerator) {
+      unrequired.push(...unrequireDroppedNulls(walker.rootSchema as SchemaType, pointerPrefix))
+    }
     if ("definitions" in walker.rootSchema) {
       walker.rootSchema.definitions = undefined
     }
@@ -156,14 +193,28 @@ const convert = async <T extends object = JSONSchema4>(
   // (Future targets like an Android generator would get their own flag/passes here.)
   const swiftGenerator = options?.target === "swift-openapi-generator"
   await walker.loadSchema(schema, options)
-  await walker.walk(makeConvertSchema(swiftGenerator), walker.vocabularies.DRAFT_07)
+  await walker.walk(makeConvertSchema(swiftGenerator), tupleAwareVocabulary(walker))
+  // Un-requiring has to happen after the walk, not during it: the walker is pre-order, so an
+  // object node is fully processed before any of its property schemas is visited. Anything the
+  // parent inferred about a child mid-walk would be a prediction about passes that have not run
+  // yet. Here every schema is final, and each one that lost its `null` branch says so.
+  const unrequired = swiftGenerator ? unrequireDroppedNulls(walker.rootSchema as SchemaType) : []
   // if we want to convert unreferenced definitions, we need to do it iteratively here
   const rootSchema = walker.rootSchema as unknown as JSONSchema
   if (convertDefs && rootSchema.definitions) {
     for (const defName in rootSchema.definitions) {
       const def = rootSchema.definitions[defName]
-      rootSchema.definitions[defName] = await handleDefinition(def, schema, swiftGenerator)
+      rootSchema.definitions[defName] = await handleDefinition(
+        def,
+        schema,
+        swiftGenerator,
+        unrequired,
+        `/definitions/${defName}`,
+      )
     }
+  }
+  if (unrequired.length > 0) {
+    options?.onUnrequiredNullable?.(unrequired)
   }
   return rootSchema as OpenAPIV3_1.Document
 }
@@ -182,8 +233,9 @@ function stripIllegalKeywords(schema: SchemaType) {
 
 // The walker visits each schema node pre-order (top-down), invoking this callback
 // before descending into `anyOf`/`oneOf` members. The closed-over `swiftGenerator` flag
-// enables the swift-openapi-generator normalization passes (see `collapseNullable` /
-// `unrequireNullableProps`).
+// enables the swift-openapi-generator normalization passes (see `collapseNullable`).
+// Whether a nullable property stays in its parent's `required` is decided *after* the whole
+// walk, by `unrequireDroppedNulls` — not here, where child schemas are still unprocessed.
 const makeConvertSchema = (swiftGenerator: boolean) => (schema?: SchemaType) => {
   let draft = schema
 
@@ -192,17 +244,21 @@ const makeConvertSchema = (swiftGenerator: boolean) => (schema?: SchemaType) => 
   }
 
   draft = stripIllegalKeywords(draft)
-  // Runs before child unions are collapsed, while each property still carries its raw
-  // `anyOf:[...,{type:null}]`, so it can detect which properties are nullable.
   if (swiftGenerator) {
-    draft = unrequireNullableProps(draft)
     draft = collapseLargeConstUnion(draft)
     draft = openTypeNullSchema(draft)
   }
   draft = convertTypes(draft)
   draft = collapseNullable(draft, swiftGenerator)
+  // After `collapseNullable`, so a nullable tuple folded onto this node by `liftMemberAsNullable`
+  // (`type: ["array","null"]` + the member's array-form `items`) is caught in the same visit.
+  draft = liftTupleToPrefixItems(draft)
 
-  if (draft.type === "array" && typeof draft.items === "undefined") {
+  if (
+    draft.type === "array" &&
+    typeof draft.items === "undefined" &&
+    typeof draft.prefixItems === "undefined"
+  ) {
     draft.items = {}
   }
 
@@ -229,6 +285,40 @@ function validateType(type: unknown) {
   for (const t of types) {
     if (t && !validTypes.has(t)) throw new InvalidTypeError(`Type "${t}" is not a valid type`)
   }
+}
+
+// TypeBox 1.x still emits tuples in draft-07 form — `items: [...]` plus `additionalItems` — which
+// is invalid under JSON Schema 2020-12, and so under OpenAPI 3.1: array-form `items` is not a
+// tuple there, it is a parse error for strict readers (OpenAPIKit) and an unreadable schema for
+// lenient ones (hey-api degrades it to `Array<unknown>`). Re-express as `prefixItems`.
+function liftTupleToPrefixItems(schema: SchemaType) {
+  const items = schema.items
+  if (!Array.isArray(items)) {
+    return schema
+  }
+
+  const additionalItems = (schema as { additionalItems?: unknown }).additionalItems
+  schema.items = undefined
+  // 2020-12 requires `prefixItems` to be a non-empty array. `Type.Tuple([])` emits `items: []`,
+  // which just means "an array with no elements" — `maxItems: 0` says that on its own.
+  if (items.length > 0) {
+    schema.prefixItems = items as JSONSchema[]
+  }
+
+  if (additionalItems === false) {
+    // `maxItems` is how 2020-12 closes a tuple. Never widen a `maxItems` the author set.
+    if (schema.maxItems === undefined) {
+      schema.maxItems = items.length
+    }
+  } else if (additionalItems && typeof additionalItems === "object") {
+    // In 2020-12 the schema for elements *past* the prefix is `items`.
+    schema.items = additionalItems as SchemaType["items"]
+  }
+  // `additionalItems: true` needs no equivalent — it is the 2020-12 default. Clearing the keyword
+  // either way keeps it away from the `x-` rename in `convertIllegalKeywordsAsExtensions`.
+  ;(schema as { additionalItems?: unknown }).additionalItems = undefined
+
+  return schema
 }
 
 const scalarTypes = new Set(["string", "number", "integer", "boolean"])
@@ -314,14 +404,16 @@ function collapseNullable(schema: SchemaType, swiftGenerator: boolean) {
     if (isBareRef(member)) {
       schema[key] = undefined
       schema.$ref = member.$ref
+      markNullDropped(schema)
       continue
     }
 
     // General fallback (swiftGenerator): any other single non-null member — a nested
     // `anyOf`/`oneOf`, a `const`/`enum`, an empty `{}`, etc. swift-openapi-generator still
     // cannot tolerate the `{type:"null"}` sibling, so inline the lone member in place of
-    // the whole union. (`unrequireNullableProps` has already marked the property optional.)
+    // the whole union. The lost nullability is carried by `unrequireDroppedNulls` instead.
     inlineSoleMember(schema, key, member)
+    markNullDropped(schema)
   }
 
   // The single-member branches above all `continue`. Multi-member nullable unions
@@ -335,10 +427,19 @@ function collapseNullable(schema: SchemaType, swiftGenerator: boolean) {
       schema[key] = schemas.filter(
         (item) => !isBareType(item, "null"),
       ) as SchemaType[keyof SchemaType]
+      markNullDropped(schema)
     }
   }
 
   return schema
+}
+
+// Record that this schema can no longer represent `null`, so `unrequireDroppedNulls` can drop it
+// from its parent's `required` after the walk. Called only from the branches that actually erase
+// the null branch — the type-array and lifted-member shapes still say `"null"` and must stay
+// required, which is what the server enforces.
+function markNullDropped(schema: SchemaType) {
+  ;(schema as Record<symbol, unknown>)[NULL_DROPPED] = true
 }
 
 // Replace a nullable combiner with its sole non-null member: drop the combiner key and
@@ -436,7 +537,7 @@ function isMergeableArray(item: JSONSchema4) {
 // a type array, so a nullable ref is rendered as the bare ref (the `{type:null}` branch
 // is dropped) and made optional via `unrequireNullableProps`.
 function isBareRef(item: JSONSchema4) {
-  if (typeof item !== "object" || item?.$ref) return false
+  if (typeof item !== "object" || item === null) return false
   const keys = Object.keys(item).filter(
     (k) => item[k as keyof JSONSchema4] !== undefined && !k.startsWith("x-") && !k.startsWith("~"),
   )
@@ -459,24 +560,15 @@ function isBareType(item: JSONSchema4, expected?: string) {
   return expected === undefined || item.type === expected
 }
 
-// True when a property schema is effectively nullable and should be dropped from a parent
-// `required` array: either an `anyOf`/`oneOf` containing a bare `{ type: "null" }` member,
-// or a standalone `{ type: "null" }` (a null-only field — always absent in practice).
-function isNullableUnion(prop: unknown): boolean {
-  if (typeof prop !== "object" || prop === null) return false
-  if (isBareType(prop as JSONSchema4, "null")) return true
-  for (const key of ["anyOf", "oneOf"] as const) {
-    const arr = (prop as Record<string, unknown>)[key]
-    if (Array.isArray(arr) && arr.some((m) => isBareType(m, "null"))) return true
-  }
-  return false
-}
-
 // A standalone `{ type: "null" }` schema (e.g. from `Type.Null()`) is unrepresentable in
 // Swift — swift-openapi-generator skips the whole property. Replace it with an empty schema
-// `{}`, which the generator models as an optional `OpenAPIValueContainer?` that decodes
-// JSON `null` to `nil`. swiftGenerator-only; the parent `required` entry is removed by
-// `unrequireNullableProps` (which also treats standalone null as nullable).
+// `{}`, which the generator models as an `OpenAPIValueContainer` that accepts JSON `null`.
+// swiftGenerator-only.
+//
+// Deliberately NOT marked via `markNullDropped`: an empty schema still accepts `null`, so a
+// required `Type.Null()` property stays required. Un-requiring it would recreate the very
+// mismatch `unrequireDroppedNulls` exists to avoid — the server requires the field, and a client
+// that believed the spec and omitted it would get a 400.
 function openTypeNullSchema(schema: SchemaType) {
   if (isBareType(schema as unknown as JSONSchema4, "null")) {
     schema.type = undefined
@@ -484,22 +576,62 @@ function openTypeNullSchema(schema: SchemaType) {
   return schema
 }
 
-// In the swiftGenerator target, a nullable property must also be absent from the parent object's
-// `required` array for swift-openapi-generator to treat it as a Swift optional (this is
-// the only mechanism for the bare-`$ref` case, which can't carry a type array). Runs on
-// the object node before its child unions are collapsed, while properties still carry
-// their raw `anyOf:[...,{type:null}]`.
-function unrequireNullableProps(schema: SchemaType) {
-  if (typeof schema !== "object" || schema === null) return schema
+// swiftGenerator-only post-walk pass. Some nullable shapes cannot survive normalization with
+// their `null` branch intact — a bare `$ref` (which can't carry a type array), a `const`/`enum`
+// or nested union that gets inlined, a multi-member union, a standalone `{type:"null"}`. For
+// those, absence from the parent's `required` is the only nullability signal left, so
+// swift-openapi-generator needs it or it drops the property outright.
+//
+// A nullable property whose emitted schema still says `"null"` — `["boolean","null"]`,
+// `["object","null"]`, … — keeps its `required` entry. Un-requiring those was pure loss: the
+// document advertised "you may omit this" while the server, validating the untransformed TypeBox
+// schema, still demanded it, and answered 400.
+//
+// This runs after the walk rather than during it because the walker is pre-order: an object node
+// is fully processed before any of its properties is visited, so nothing a parent could observe
+// mid-walk reflects what its children will actually emit. Each pass that erases a null branch
+// marks the schema it erased (`markNullDropped`); this one only reads those marks. There is no
+// predicate here to fall out of sync with the passes above.
+//
+// Returns the JSON pointers it un-required, so callers can report which server-side schemas need
+// a matching `Type.Optional(...)` — see `Options.onUnrequiredNullable`.
+function unrequireDroppedNulls(
+  schema: SchemaType,
+  pointer = "",
+  seen = new Set<object>(),
+): string[] {
+  if (typeof schema !== "object" || schema === null || seen.has(schema)) return []
+  seen.add(schema)
+
+  const dropped: string[] = []
   const { required, properties } = schema
-  if (!Array.isArray(required) || typeof properties !== "object" || properties === null) {
-    return schema
+
+  if (Array.isArray(required) && typeof properties === "object" && properties !== null) {
+    const props = properties as Record<string, Record<symbol, unknown> | undefined>
+    const filtered = required.filter((name) => {
+      if (!props[name]?.[NULL_DROPPED]) return true
+      dropped.push(`${pointer}/properties/${name}`)
+      return false
+    })
+    if (filtered.length !== required.length) {
+      schema.required = (filtered.length === 0 ? undefined : filtered) as SchemaType["required"]
+    }
   }
-  const filtered = required.filter(
-    (name) => !isNullableUnion((properties as Record<string, unknown>)[name]),
-  )
-  schema.required = (filtered.length === 0 ? undefined : filtered) as SchemaType["required"]
-  return schema
+
+  for (const [key, value] of Object.entries(schema)) {
+    if (!value || typeof value !== "object") continue
+    if (Array.isArray(value)) {
+      value.forEach((entry, i) => {
+        dropped.push(...unrequireDroppedNulls(entry as SchemaType, `${pointer}/${key}/${i}`, seen))
+      })
+      continue
+    }
+    dropped.push(...unrequireDroppedNulls(value as SchemaType, `${pointer}/${key}`, seen))
+  }
+
+  delete (schema as Record<symbol, unknown>)[NULL_DROPPED]
+
+  return dropped
 }
 
 function convertTypes(schema: SchemaType) {
